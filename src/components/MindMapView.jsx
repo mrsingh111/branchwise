@@ -21,6 +21,8 @@ import {
   Link2,
   Check,
   RotateCcw,
+  LayoutGrid,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { BRANCH_COLORS } from '../data/presets';
 import { askAboutMap, expandNodeWithAI, synthesizeNodes } from '../services/aiProvider';
@@ -120,53 +122,88 @@ export default function MindMapView({
   const [linkLoading, setLinkLoading] = useState(false);
   const [activeLink, setActiveLink] = useState(null);
 
+  // Layout switcher & draggable node offsets
+  const [layoutMode, setLayoutMode] = useState('radial'); // 'radial' | 'tree' | 'org'
+  const [nodeOffsets, setNodeOffsets] = useState({});
+  const nodeDragRef = useRef({ active: false, id: null, startX: 0, startY: 0, origDx: 0, origDy: 0, moved: false });
+
   const layout = useMemo(() => {
-    const angles = getBranchAngles(map.branches.length);
-    const branchRadius = 320;
-    const childRadius = 290;
-    const leafRadius = 245;
+    const count = Math.max(1, map.branches.length);
+    const angles = getBranchAngles(count);
+    const branchRadius = 355;
+    const childRadius = 325;
+    const leafRadius = 275;
 
     const rawBranches = map.branches.map((branch, idx) => {
-      const angle = angles[idx];
-      const bx = CX + Math.cos(angle) * branchRadius;
-      const by = CY + Math.sin(angle) * branchRadius;
       const color = BRANCH_COLORS[branch.colorIdx % BRANCH_COLORS.length];
-
       const isExpanded = expandedBranches.has(branch.id);
       const children = isExpanded ? branch.children || [] : [];
-      const sectorLimit = (2 * Math.PI) / Math.max(1, map.branches.length);
-      const spread = Math.min(sectorLimit * 0.92, 0.48 * Math.max(1, children.length - 1));
 
-      const childPositions = children.map((child, cIdx) => {
-        const offset =
-          children.length === 1
-            ? 0
-            : -spread / 2 + (cIdx / (children.length - 1)) * spread;
-        const cAngle = angle + offset;
-        const r = children.length >= 3 && cIdx % 2 === 1 ? childRadius + 58 : childRadius;
-        const px = bx + Math.cos(cAngle) * r;
-        const py = by + Math.sin(cAngle) * r;
+      let bx, by, angle;
+      let childPositions = [];
 
-        const lx = px + Math.cos(cAngle) * leafRadius;
-        const ly = py + Math.sin(cAngle) * leafRadius;
+      if (layoutMode === 'tree') {
+        // Left -> Right structured tree
+        const rowGap = 210;
+        const totalH = (count - 1) * rowGap;
+        bx = CX - 120 + 360;
+        by = CY - totalH / 2 + idx * rowGap;
+        angle = 0;
 
-        return {
-          ...child,
-          x: px,
-          y: py,
-          lx,
-          ly,
-          cAngle,
-        };
-      });
+        const cGap = 138;
+        const cTotal = (children.length - 1) * cGap;
+        childPositions = children.map((child, cIdx) => {
+          const px = bx + 320;
+          const py = by - cTotal / 2 + cIdx * cGap;
+          return { ...child, x: px, y: py, lx: px + 295, ly: py, cAngle: 0 };
+        });
+      } else if (layoutMode === 'org') {
+        // Top -> Down hierarchy
+        const colGap = 310;
+        const totalW = (count - 1) * colGap;
+        bx = CX - totalW / 2 + idx * colGap;
+        by = CY - 180 + 240;
+        angle = Math.PI / 2;
+
+        const cGap = 255;
+        const cTotal = (children.length - 1) * cGap;
+        childPositions = children.map((child, cIdx) => {
+          const px = bx - cTotal / 2 + cIdx * cGap;
+          const py = by + 210;
+          return { ...child, x: px, y: py, lx: px, ly: py + 150, cAngle: Math.PI / 2 };
+        });
+      } else {
+        // Radial
+        angle = angles[idx];
+        bx = CX + Math.cos(angle) * branchRadius;
+        by = CY + Math.sin(angle) * branchRadius;
+        const sectorLimit = (2 * Math.PI) / count;
+        const spread = Math.min(sectorLimit * 0.94, 0.5 * Math.max(1, children.length - 1));
+
+        childPositions = children.map((child, cIdx) => {
+          const offset =
+            children.length === 1
+              ? 0
+              : -spread / 2 + (cIdx / (children.length - 1)) * spread;
+          const cAngle = angle + offset;
+          const r = children.length >= 3 && cIdx % 2 === 1 ? childRadius + 64 : childRadius;
+          const px = bx + Math.cos(cAngle) * r;
+          const py = by + Math.sin(cAngle) * r;
+          const lx = px + Math.cos(cAngle) * leafRadius;
+          const ly = py + Math.sin(cAngle) * leafRadius;
+          return { ...child, x: px, y: py, lx, ly, cAngle };
+        });
+      }
 
       return { branch, bx, by, angle, color, isExpanded, childPositions };
     });
 
     // Build AABB list: [center, ...branches, ...children, ...leaves]
-    const boxes = [{ x: CX, y: CY, w: 240, h: 76 }];
+    const rootX = layoutMode === 'tree' ? CX - 120 : CX;
+    const rootY = layoutMode === 'org' ? CY - 180 : CY;
+    const boxes = [{ x: rootX, y: rootY, w: 270, h: 86 }];
     rawBranches.forEach((b) => {
-      boxes.push({ x: b.bx, y: b.by, w: b.isExpanded ? 245 : 210, h: b.isExpanded ? 105 : 48 });
+      boxes.push({ x: b.bx, y: b.by, w: b.isExpanded ? 285 : 235, h: b.isExpanded ? 128 : 54 });
     });
     const fixedCount = boxes.length;
 
@@ -174,18 +211,18 @@ export default function MindMapView({
     const leafRefs = [];
     rawBranches.forEach((b) => {
       b.childPositions.forEach((cp) => {
-        const cBox = { x: cp.x, y: cp.y, w: 195, h: 56 };
+        const cBox = { x: cp.x, y: cp.y, w: 225, h: 64 };
         boxes.push(cBox);
         childRefs.push({ cp, box: cBox });
         if (cp.summary) {
-          const lBox = { x: cp.lx, y: cp.ly, w: 215, h: 108 };
+          const lBox = { x: cp.lx, y: cp.ly, w: 250, h: 126 };
           boxes.push(lBox);
           leafRefs.push({ cp, box: lBox });
         }
       });
     });
 
-    resolveOverlaps(boxes, fixedCount, 35, 22);
+    resolveOverlaps(boxes, fixedCount, 40, 24);
 
     childRefs.forEach(({ cp, box }) => {
       cp.x = box.x;
@@ -196,8 +233,29 @@ export default function MindMapView({
       cp.ly = box.y;
     });
 
+    // Apply user drag offsets on top
+    rawBranches.forEach((b) => {
+      const bOff = nodeOffsets[b.branch.id];
+      if (bOff) {
+        b.bx += bOff.dx;
+        b.by += bOff.dy;
+      }
+      b.childPositions.forEach((cp) => {
+        const cOff = nodeOffsets[cp.id];
+        if (cOff) {
+          cp.x += cOff.dx;
+          cp.y += cOff.dy;
+        }
+        const lOff = nodeOffsets[`leaf-${cp.id}`];
+        if (lOff) {
+          cp.lx += lOff.dx;
+          cp.ly += lOff.dy;
+        }
+      });
+    });
+
     return rawBranches;
-  }, [map.branches, expandedBranches]);
+  }, [map.branches, expandedBranches, layoutMode, nodeOffsets]);
 
   const nodeCoords = useMemo(() => {
     const coords = {};
@@ -421,12 +479,89 @@ export default function MindMapView({
     URL.revokeObjectURL(url);
   };
 
+  const rootBaseX = layoutMode === 'tree' ? CX - 120 : CX;
+  const rootBaseY = layoutMode === 'org' ? CY - 180 : CY;
+  const rootOff = nodeOffsets['root'] || { dx: 0, dy: 0 };
+  const rootX = rootBaseX + rootOff.dx;
+  const rootY = rootBaseY + rootOff.dy;
+
+  const exportSvgDiagram = () => {
+    const pad = 120;
+    let minX = rootX - 150, maxX = rootX + 150, minY = rootY - 60, maxY = rootY + 60;
+    layout.forEach((b) => {
+      minX = Math.min(minX, b.bx - 160); maxX = Math.max(maxX, b.bx + 160);
+      minY = Math.min(minY, b.by - 80); maxY = Math.max(maxY, b.by + 80);
+      b.childPositions.forEach((cp) => {
+        minX = Math.min(minX, cp.x - 130, cp.lx - 130);
+        maxX = Math.max(maxX, cp.x + 130, cp.lx + 130);
+        minY = Math.min(minY, cp.y - 50, cp.ly - 70);
+        maxY = Math.max(maxY, cp.y + 50, cp.ly + 70);
+      });
+    });
+    const w = Math.round(maxX - minX + pad * 2);
+    const h = Math.round(maxY - minY + pad * 2);
+    const ox = -minX + pad;
+    const oy = -minY + pad;
+    const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const paths = layout.flatMap((b) => {
+      const p1 = `<path d="M ${rootX + ox} ${rootY + oy} L ${b.bx + ox} ${b.by + oy}" stroke="${b.color.line}" stroke-width="2" fill="none" />`;
+      const p2 = b.childPositions.flatMap((cp) => [
+        `<path d="M ${b.bx + ox} ${b.by + oy} L ${cp.x + ox} ${cp.y + oy}" stroke="${b.color.line}" stroke-width="1.6" fill="none" />`,
+        cp.summary ? `<path d="M ${cp.x + ox} ${cp.y + oy} L ${cp.lx + ox} ${cp.ly + oy}" stroke="${b.color.line}" stroke-width="1.2" stroke-dasharray="4 3" fill="none" />` : '',
+      ]);
+      return [p1, ...p2];
+    }).join('\n');
+    const nodes = [
+      `<rect x="${rootX + ox - 110}" y="${rootY + oy - 24}" width="220" height="48" rx="8" fill="#1B1F28" stroke="#475569" /><text x="${rootX + ox}" y="${rootY + oy + 5}" fill="#F2F4F8" font-family="Inter,sans-serif" font-size="14" font-weight="600" text-anchor="middle">${esc(map.title.slice(0, 32))}</text>`,
+      ...layout.flatMap((b) => [
+        `<rect x="${b.bx + ox - 105}" y="${b.by + oy - 22}" width="210" height="44" rx="8" fill="#171A21" stroke="${b.color.accent}" /><text x="${b.bx + ox}" y="${b.by + oy + 5}" fill="#F2F4F8" font-family="Inter,sans-serif" font-size="13" font-weight="600" text-anchor="middle">${esc(b.branch.label.slice(0, 28))}</text>`,
+        ...b.childPositions.map((cp) => `<rect x="${cp.x + ox - 90}" y="${cp.y + oy - 18}" width="180" height="36" rx="6" fill="#161920" stroke="#334155" /><text x="${cp.x + ox}" y="${cp.y + oy + 4}" fill="#CBD5E1" font-family="Inter,sans-serif" font-size="12" text-anchor="middle">${esc(cp.label.slice(0, 24))}</text>`),
+      ]),
+    ].join('\n');
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="100%" height="100%" fill="#0F1115"/>${paths}${nodes}</svg>`;
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${map.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const startNodeDrag = (e, id) => {
+    e.stopPropagation();
+    const cur = nodeOffsets[id] || { dx: 0, dy: 0 };
+    nodeDragRef.current = {
+      active: true,
+      id,
+      startX: e.clientX,
+      startY: e.clientY,
+      origDx: cur.dx,
+      origDy: cur.dy,
+      moved: false,
+    };
+  };
+
   const onPointerDown = (e) => {
     if (e.target.closest('button') || e.target.closest('[data-node]')) return;
     draggingRef.current = true;
     dragStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
   };
   const onPointerMove = (e) => {
+    if (nodeDragRef.current.active) {
+      const dxScreen = e.clientX - nodeDragRef.current.startX;
+      const dyScreen = e.clientY - nodeDragRef.current.startY;
+      if (Math.hypot(dxScreen, dyScreen) > 4) nodeDragRef.current.moved = true;
+      const id = nodeDragRef.current.id;
+      setNodeOffsets((prev) => ({
+        ...prev,
+        [id]: {
+          dx: nodeDragRef.current.origDx + dxScreen / zoom,
+          dy: nodeDragRef.current.origDy + dyScreen / zoom,
+        },
+      }));
+      return;
+    }
     if (!draggingRef.current) return;
     setPan({
       x: e.clientX - dragStartRef.current.x,
@@ -435,6 +570,11 @@ export default function MindMapView({
   };
   const onPointerUp = () => {
     draggingRef.current = false;
+    if (nodeDragRef.current.active) {
+      setTimeout(() => {
+        nodeDragRef.current.active = false;
+      }, 0);
+    }
   };
 
   const exploredCount = (map.exploredBranchIds || []).length;
@@ -493,6 +633,14 @@ export default function MindMapView({
         >
           <HelpCircle size={isMobile ? 14 : 16} />
           <span>Quiz</span>
+        </button>
+
+        <button
+          onClick={exportSvgDiagram}
+          style={{ ...styles.roundBtn, width: isMobile ? 32 : 38, height: isMobile ? 32 : 38 }}
+          title="Export SVG Diagram"
+        >
+          <ImageIcon size={isMobile ? 15 : 17} />
         </button>
 
         <button
@@ -587,41 +735,79 @@ export default function MindMapView({
           style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
         >
           {layout.map(({ branch, bx, by, color, childPositions }) => {
-            const midX = (CX + bx) / 2;
-            const midY = (CY + by) / 2 + (bx > CX ? -24 : 24);
+            const midX = (rootX + bx) / 2;
+            const midY = (rootY + by) / 2 + (bx > rootX ? -24 : 24);
+            const rootPath = `M ${rootX} ${rootY} Q ${midX} ${midY} ${bx} ${by}`;
             return (
               <g key={branch.id}>
-                {/* Level 0 -> Level 1 curve */}
+                {/* Level 0 -> Level 1 base + animated flowing wire */}
                 <path
-                  d={`M ${CX} ${CY} Q ${midX} ${midY} ${bx} ${by}`}
+                  d={rootPath}
                   stroke={color.line}
                   strokeWidth="2.2"
+                  strokeLinecap="round"
                   fill="none"
-                  opacity="0.85"
+                  opacity="0.32"
                 />
-                {/* Level 1 -> Level 2 curves & Level 2 -> Level 3 explanation curves */}
+                <path
+                  d={rootPath}
+                  stroke={color.line}
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  fill="none"
+                  opacity="0.9"
+                  className="wire-flow"
+                />
+                <circle cx={bx} cy={by} r="3.5" fill={color.line} opacity="0.85" />
+
+                {/* Level 1 -> Level 2 & Level 2 -> Level 3 animated wires */}
                 {childPositions.map((cp) => {
                   const cmx = (bx + cp.x) / 2;
                   const cmy = (by + cp.y) / 2 + (cp.x > bx ? -18 : 18);
                   const lmx = (cp.x + cp.lx) / 2 + (cp.x > bx ? 14 : -14);
                   const lmy = (cp.y + cp.ly) / 2;
+                  const childPath = `M ${bx} ${by} Q ${cmx} ${cmy} ${cp.x} ${cp.y}`;
+                  const leafPath = `M ${cp.x} ${cp.y} Q ${lmx} ${lmy} ${cp.lx} ${cp.ly}`;
                   return (
                     <g key={cp.id}>
                       <path
-                        d={`M ${bx} ${by} Q ${cmx} ${cmy} ${cp.x} ${cp.y}`}
+                        d={childPath}
                         stroke={color.line}
-                        strokeWidth="1.7"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
                         fill="none"
-                        opacity="0.75"
+                        opacity="0.28"
                       />
+                      <path
+                        d={childPath}
+                        stroke={color.line}
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        fill="none"
+                        opacity="0.85"
+                        className="wire-flow"
+                      />
+                      <circle cx={cp.x} cy={cp.y} r="3" fill={color.line} opacity="0.85" />
                       {cp.summary && (
-                        <path
-                          d={`M ${cp.x} ${cp.y} Q ${lmx} ${lmy} ${cp.lx} ${cp.ly}`}
-                          stroke={color.line}
-                          strokeWidth="1.4"
-                          fill="none"
-                          opacity="0.6"
-                        />
+                        <>
+                          <path
+                            d={leafPath}
+                            stroke={color.line}
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            fill="none"
+                            opacity="0.25"
+                          />
+                          <path
+                            d={leafPath}
+                            stroke={color.line}
+                            strokeWidth="1.7"
+                            strokeLinecap="round"
+                            fill="none"
+                            opacity="0.78"
+                            className="wire-flow-slow"
+                          />
+                        </>
                       )}
                     </g>
                   );
@@ -637,16 +823,26 @@ export default function MindMapView({
             if (!a || !b) return null;
             const mx = (a.x + b.x) / 2;
             const my = (a.y + b.y) / 2 - 48;
+            const synPath = `M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`;
             return (
-              <path
-                key={link.id}
-                d={`M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`}
-                stroke="#D49B38"
-                strokeWidth="2"
-                strokeDasharray="6 4"
-                fill="none"
-                opacity="0.85"
-              />
+              <g key={link.id}>
+                <path
+                  d={synPath}
+                  stroke="#D49B38"
+                  strokeWidth="2"
+                  fill="none"
+                  opacity="0.28"
+                />
+                <path
+                  d={synPath}
+                  stroke="#D49B38"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  fill="none"
+                  opacity="0.95"
+                  className="wire-flow"
+                />
+              </g>
             );
           })}
         </svg>
@@ -654,11 +850,14 @@ export default function MindMapView({
         {/* Central Topic Node */}
         <div
           data-node
-          onClick={() => setSelectedNode(null)}
+          onPointerDown={(e) => startNodeDrag(e, 'root')}
+          onClick={() => {
+            if (!nodeDragRef.current.moved) setSelectedNode(null);
+          }}
           style={{
             ...styles.centerNode,
-            left: CX,
-            top: CY,
+            left: rootX,
+            top: rootY,
           }}
         >
           {map.title}
@@ -677,7 +876,9 @@ export default function MindMapView({
               <div
                 data-node
                 className="ml-node"
+                onPointerDown={(e) => startNodeDrag(e, branch.id)}
                 onClick={() => {
+                  if (nodeDragRef.current.moved) return;
                   if (linkMode) {
                     handleNodeInteraction(branch, branch, true);
                   } else {
@@ -693,23 +894,23 @@ export default function MindMapView({
                   border: '1px solid var(--border)',
                   borderLeft: `4px solid ${color.accent}`,
                   borderRadius: 12,
-                  maxWidth: isExpanded ? 240 : 205,
-                  padding: isExpanded ? '12px 15px' : '10px 16px',
+                  maxWidth: isExpanded ? 275 : 230,
+                  padding: isExpanded ? '13px 17px' : '11px 18px',
                   boxShadow: isHighlighted
                     ? `0 0 0 2px ${color.accent}, 0 12px 28px var(--shadow)`
                     : '0 8px 22px var(--shadow)',
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3 }}>
+                <div style={{ fontWeight: 600, fontSize: 15, lineHeight: 1.32 }}>
                   {branch.label}
                 </div>
                 {isExpanded && branch.summary && (
                   <div
                     style={{
-                      fontSize: 11,
+                      fontSize: 13,
                       fontWeight: 400,
-                      lineHeight: 1.4,
-                      marginTop: 6,
+                      lineHeight: 1.45,
+                      marginTop: 7,
                       color: 'var(--text-soft)',
                     }}
                   >
@@ -743,7 +944,10 @@ export default function MindMapView({
                     <div
                       data-node
                       className="ml-node"
-                      onClick={() => handleNodeInteraction(branch, cp, false)}
+                      onPointerDown={(e) => startNodeDrag(e, cp.id)}
+                      onClick={() => {
+                        if (!nodeDragRef.current.moved) handleNodeInteraction(branch, cp, false);
+                      }}
                       style={{
                         ...styles.childNode,
                         left: cp.x,
@@ -778,7 +982,10 @@ export default function MindMapView({
                     {cp.summary && (
                       <div
                         data-node
-                        onClick={() => handleNodeInteraction(branch, cp, false)}
+                        onPointerDown={(e) => startNodeDrag(e, `leaf-${cp.id}`)}
+                        onClick={() => {
+                          if (!nodeDragRef.current.moved) handleNodeInteraction(branch, cp, false);
+                        }}
                         style={{
                           ...styles.leafText,
                           left: cp.lx,
@@ -1012,6 +1219,19 @@ export default function MindMapView({
             </button>
             <button
               onClick={() => {
+                const next = layoutMode === 'radial' ? 'tree' : layoutMode === 'tree' ? 'org' : 'radial';
+                setLayoutMode(next);
+                setNodeOffsets({});
+                setPan({ x: 0, y: 0 });
+              }}
+              style={{ ...styles.toolBtn, width: 'auto', padding: '0 9px', fontSize: 12 }}
+              title="Switch layout: Radial / Tree / Org"
+            >
+              <LayoutGrid size={14} style={{ marginRight: 5 }} />
+              {layoutMode === 'radial' ? 'Radial' : layoutMode === 'tree' ? 'Tree' : 'Org'}
+            </button>
+            <button
+              onClick={() => {
                 if (expandedBranches.size === map.branches.length) {
                   setExpandedBranches(new Set());
                 } else {
@@ -1224,11 +1444,11 @@ const styles = {
     transform: 'translate(-50%, -50%)',
     background: 'var(--center-bg)',
     border: '1px solid var(--border-strong)',
-    borderRadius: 8,
-    padding: '14px 20px',
-    maxWidth: 230,
+    borderRadius: 10,
+    padding: '16px 24px',
+    maxWidth: 260,
     textAlign: 'center',
-    fontSize: 14,
+    fontSize: 17,
     fontWeight: 600,
     lineHeight: 1.35,
     color: 'var(--text)',
@@ -1246,10 +1466,10 @@ const styles = {
     position: 'absolute',
     top: -8,
     right: -6,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 600,
-    padding: '1px 5px',
-    borderRadius: 4,
+    padding: '2px 6px',
+    borderRadius: 5,
     border: '1px solid',
   },
   childNode: {
@@ -1257,30 +1477,30 @@ const styles = {
     transform: 'translate(-50%, -50%)',
     background: 'var(--child-bg)',
     border: '1px solid',
-    borderRadius: 6,
-    padding: '7px 11px',
-    fontSize: 12,
+    borderRadius: 8,
+    padding: '9px 14px',
+    fontSize: 14,
     fontWeight: 500,
     color: 'var(--text)',
-    maxWidth: 185,
+    maxWidth: 215,
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 7,
+    gap: 8,
     textAlign: 'left',
     cursor: 'pointer',
   },
   leafText: {
     position: 'absolute',
     transform: 'translate(-50%, -50%)',
-    width: 205,
-    fontSize: 11.5,
-    lineHeight: 1.42,
+    width: 240,
+    fontSize: 13.5,
+    lineHeight: 1.48,
     color: 'var(--text-soft)',
     textAlign: 'left',
     background: 'var(--leaf-bg)',
     border: '1px solid var(--border)',
-    padding: '7px 9px',
-    borderRadius: 6,
+    padding: '9px 12px',
+    borderRadius: 8,
     boxShadow: '0 2px 8px var(--shadow)',
     cursor: 'pointer',
   },
