@@ -96,16 +96,13 @@ export default function HomeView({
     <div className="home-canvas" style={styles.page}>
       <header style={{ ...styles.header, padding: isMobile ? '12px 16px' : '14px 28px' }}>
         <div style={styles.brand}>
-          <svg width={isMobile ? 20 : 24} height={isMobile ? 20 : 24} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="6" cy="6" r="2.5" stroke="#D49B38" strokeWidth="1.8" />
-            <circle cx="18" cy="6" r="2.5" stroke="#4D88E5" strokeWidth="1.8" />
-            <circle cx="12" cy="18" r="2.5" stroke="#52A87A" strokeWidth="1.8" />
-            <path
-              d="M8.3 7.2L15.7 7.2M7.2 8.2L10.8 15.8M16.8 8.2L13.2 15.8"
-              stroke="var(--muted)"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-            />
+          <svg width={isMobile ? 22 : 26} height={isMobile ? 22 : 26} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6.5 19V7.5C6.5 6.2 7.5 5.5 9 5.5" stroke="var(--muted)" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M6.5 13C6.5 10.8 10 10.8 14 10.8" stroke="var(--muted)" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M6.5 17C9.5 17 12.5 17 15.5 17" stroke="var(--muted)" strokeWidth="1.8" strokeLinecap="round" />
+            <circle cx="11" cy="5.5" r="2.3" fill="#D49B38" />
+            <circle cx="16" cy="10.8" r="2.3" fill="#4D88E5" />
+            <circle cx="17.5" cy="17" r="2.3" fill="#52A87A" />
           </svg>
           <span style={{ ...styles.wordmark, fontSize: isMobile ? 15 : 18 }}>Branchwise</span>
         </div>
