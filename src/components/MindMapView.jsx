@@ -380,45 +380,65 @@ export default function MindMapView({
       }}
     >
       {/* Top Bar */}
-      <header style={styles.topBar} className="no-print">
-        <button onClick={onBack} style={styles.roundBtn} title="Back to Home">
-          <ArrowLeft size={18} />
+      <header style={{ ...styles.topBar, padding: isMobile ? '10px 12px' : '12px 22px' }} className="no-print">
+        <button
+          onClick={onBack}
+          style={{ ...styles.roundBtn, width: isMobile ? 32 : 38, height: isMobile ? 32 : 38 }}
+          title="Back to Home"
+        >
+          <ArrowLeft size={isMobile ? 17 : 19} />
         </button>
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={styles.titleRow}>
-            <span style={styles.mapTitle}>{map.title}</span>
-            <span style={styles.progressPill}>
-              {exploredCount}/{map.branches.length}
+            <span style={{ ...styles.mapTitle, fontSize: isMobile ? 14 : 17 }}>{map.title}</span>
+            <span style={{ ...styles.progressPill, fontSize: isMobile ? 11 : 12.5 }}>
+              {exploredCount}/{map.branches.length} {!isMobile && 'explored'}
             </span>
           </div>
           {!isMobile && (
-            <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
               Click any branch to expand sub-nodes and notes
             </div>
           )}
         </div>
 
-        <button onClick={onOpenQuiz} style={styles.quizBtn}>
-          <HelpCircle size={15} />
+        <button
+          onClick={onOpenQuiz}
+          style={{
+            ...styles.quizBtn,
+            height: isMobile ? 32 : 38,
+            padding: isMobile ? '0 11px' : '0 15px',
+            fontSize: isMobile ? 12 : 13.5,
+          }}
+        >
+          <HelpCircle size={isMobile ? 14 : 16} />
           <span>Quiz</span>
         </button>
 
-        <button onClick={exportMarkdown} style={styles.roundBtn} title="Export Markdown">
-          <Download size={16} />
+        <button
+          onClick={exportMarkdown}
+          style={{ ...styles.roundBtn, width: isMobile ? 32 : 38, height: isMobile ? 32 : 38 }}
+          title="Export Markdown"
+        >
+          <Download size={isMobile ? 15 : 17} />
         </button>
 
         <button
           onClick={onToggleTheme}
-          style={styles.roundBtn}
+          style={{ ...styles.roundBtn, width: isMobile ? 32 : 38, height: isMobile ? 32 : 38 }}
           title={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
           aria-label="Toggle theme"
         >
-          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          {theme === 'dark' ? <Sun size={isMobile ? 15 : 17} /> : <Moon size={isMobile ? 15 : 17} />}
         </button>
 
-        <button onClick={onOpenSettings} style={styles.roundBtn} title="AI API Settings">
-          <Settings size={16} />
+        <button
+          onClick={onOpenSettings}
+          style={{ ...styles.roundBtn, width: isMobile ? 32 : 38, height: isMobile ? 32 : 38 }}
+          title="AI API Settings"
+        >
+          <Settings size={isMobile ? 15 : 17} />
         </button>
       </header>
 

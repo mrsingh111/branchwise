@@ -67,6 +67,7 @@ export default function HomeView({
 }) {
   const [input, setInput] = useState('');
   const [supportOpen, setSupportOpen] = useState(false);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
 
   const isLive = Boolean(
     settings.apiKey?.trim() ||
@@ -87,9 +88,9 @@ export default function HomeView({
 
   return (
     <div className="home-canvas" style={styles.page}>
-      <header style={styles.header}>
+      <header style={{ ...styles.header, padding: isMobile ? '12px 16px' : '14px 28px' }}>
         <div style={styles.brand}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <svg width={isMobile ? 20 : 24} height={isMobile ? 20 : 24} viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <circle cx="6" cy="6" r="2.5" stroke="#D49B38" strokeWidth="1.8" />
             <circle cx="18" cy="6" r="2.5" stroke="#4D88E5" strokeWidth="1.8" />
             <circle cx="12" cy="18" r="2.5" stroke="#52A87A" strokeWidth="1.8" />
@@ -100,46 +101,67 @@ export default function HomeView({
               strokeLinecap="round"
             />
           </svg>
-          <span style={styles.wordmark}>MindLattice</span>
+          <span style={{ ...styles.wordmark, fontSize: isMobile ? 15 : 18 }}>MindLattice</span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 10 }}>
           <button
             type="button"
             onClick={() => setSupportOpen(true)}
             className="ml-btn"
-            style={styles.topSupportBtn}
+            style={{
+              ...styles.topSupportBtn,
+              height: isMobile ? 32 : 36,
+              padding: isMobile ? '0 10px' : '0 14px',
+              fontSize: isMobile ? 12 : 13.5,
+            }}
             title="Support Sewak Singh"
           >
-            <Heart size={13} color="#E06C52" />
+            <Heart size={isMobile ? 13 : 15} color="#E06C52" />
             <span>Support</span>
           </button>
           <button
             onClick={onToggleTheme}
             className="ml-btn"
-            style={styles.iconBtn}
+            style={{
+              ...styles.iconBtn,
+              width: isMobile ? 30 : 36,
+              height: isMobile ? 30 : 36,
+            }}
             title={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
             aria-label="Toggle theme"
           >
-            {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+            {theme === 'dark' ? <Sun size={isMobile ? 14 : 16} /> : <Moon size={isMobile ? 14 : 16} />}
           </button>
-          <button onClick={onOpenSettings} className="ml-btn" style={styles.apiStatusBtn}>
+          <button
+            onClick={onOpenSettings}
+            className="ml-btn"
+            style={{
+              ...styles.apiStatusBtn,
+              height: isMobile ? 30 : 36,
+              padding: isMobile ? '0 10px' : '0 14px',
+            }}
+          >
             <span
               style={{
-                width: 6,
-                height: 6,
+                width: isMobile ? 6 : 8,
+                height: isMobile ? 6 : 8,
                 borderRadius: 999,
                 background: isLive ? '#52A87A' : settings.useDemoIfNoKey ? '#D49B38' : '#E06C52',
               }}
             />
-            <span className="mono" style={{ fontSize: 11.5 }}>
+            <span className="mono" style={{ fontSize: isMobile ? 11.5 : 13, fontWeight: 500 }}>
               {isLive
-                ? settings.model || 'live'
+                ? settings.model || 'Live AI'
                 : settings.useDemoIfNoKey
-                ? 'demo'
-                : 'key required'}
+                ? isMobile
+                  ? 'demo'
+                  : 'Demo Mode · Set API'
+                : isMobile
+                ? 'key required'
+                : 'API Key Required'}
             </span>
-            <Settings size={13} color="var(--muted)" />
+            <Settings size={isMobile ? 13 : 15} color="var(--muted)" />
           </button>
         </div>
       </header>
