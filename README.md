@@ -2,7 +2,7 @@
 
 An open-source, bring-your-own-key (BYOK) **visual AI thinking workspace** for turning any topic or pasted source into an interactive 3-level knowledge tree, exploring ideas in chat, and testing retention with quizzes.
 
-Made freely for everyone by **[Sewak Singh](https://github.com/mrsingh111)**.
+Made freely for everyone by **[Sewak Singh](https://github.com/mrsingh111)** · **[Try Live App →](https://mrsingh111.github.io/branchwise/)**
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Support-Buy%20Me%20a%20Coffee-orange?style=flat-square)](https://buymeacoffee.com/sewak_singh)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
