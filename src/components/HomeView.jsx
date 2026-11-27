@@ -112,7 +112,7 @@ export default function HomeView({
             title="Support Sewak Singh"
           >
             <Heart size={13} color="#E06C52" />
-            <span>Support Me</span>
+            <span>Support</span>
           </button>
           <button
             onClick={onToggleTheme}
@@ -401,10 +401,11 @@ const styles = {
   header: {
     width: '100%',
     borderBottom: '1px solid var(--border)',
-    padding: '12px 24px',
+    padding: '12px 16px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
     backdropFilter: 'blur(8px)',
   },
   brand: {
@@ -423,13 +424,14 @@ const styles = {
     border: '1px solid rgba(224, 108, 82, 0.32)',
     color: 'var(--text)',
     borderRadius: 6,
-    height: 30,
+    height: 32,
     padding: '0 10px',
     fontSize: 12,
     fontWeight: 500,
+    whiteSpace: 'nowrap',
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     cursor: 'pointer',
   },
   iconBtn: {

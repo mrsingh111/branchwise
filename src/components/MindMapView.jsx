@@ -88,9 +88,13 @@ export default function MindMapView({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Responsive initial zoom so all 6 branches fit cleanly on mobile screens
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+  const defaultZoom = isMobile ? 0.44 : 0.82;
+
   // Pan & zoom
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(0.82);
+  const [zoom, setZoom] = useState(defaultZoom);
   const draggingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
@@ -385,12 +389,14 @@ export default function MindMapView({
           <div style={styles.titleRow}>
             <span style={styles.mapTitle}>{map.title}</span>
             <span style={styles.progressPill}>
-              {exploredCount}/{map.branches.length} explored
+              {exploredCount}/{map.branches.length}
             </span>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-            Click any branch to expand sub-nodes and notes
-          </div>
+          {!isMobile && (
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+              Click any branch to expand sub-nodes and notes
+            </div>
+          )}
         </div>
 
         <button onClick={onOpenQuiz} style={styles.quizBtn}>
@@ -638,7 +644,11 @@ export default function MindMapView({
 
       {/* Compact Node Action Card (Go Deeper with AI) */}
       {selectedNode && (
-        <div data-scrollable style={styles.inspector} className="no-print">
+        <div
+          data-scrollable
+          style={isMobile ? styles.inspectorMobile : styles.inspector}
+          className="no-print"
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: '#B9A7FF', textTransform: 'uppercase' }}>
               {selectedNode.isBranch ? 'Branch' : selectedNode.branch.label}
@@ -713,7 +723,7 @@ export default function MindMapView({
             <button onClick={() => setZoom((z) => Math.max(0.38, +(z - 0.12).toFixed(2)))} style={styles.toolBtn} title="Zoom Out">
               <ZoomOut size={16} />
             </button>
-            <button onClick={() => { setPan({ x: 0, y: 0 }); setZoom(0.82); }} style={styles.toolBtn} title="Fit to screen">
+            <button onClick={() => { setPan({ x: 0, y: 0 }); setZoom(defaultZoom); }} style={styles.toolBtn} title="Fit to screen">
               <Maximize2 size={15} />
             </button>
             <button onClick={() => setZoom((z) => Math.min(1.6, +(z + 0.12).toFixed(2)))} style={styles.toolBtn} title="Zoom In">
@@ -761,6 +771,7 @@ const styles = {
     height: '100%',
     overflow: 'hidden',
     cursor: 'grab',
+    touchAction: 'none',
   },
   topBar: {
     position: 'fixed',
@@ -936,6 +947,20 @@ const styles = {
     borderRadius: 14,
     padding: 12,
     boxShadow: '0 14px 34px var(--shadow)',
+  },
+  inspectorMobile: {
+    position: 'fixed',
+    bottom: 112,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 25,
+    width: 'min(360px, 92vw)',
+    background: 'var(--surface-glass)',
+    backdropFilter: 'blur(10px)',
+    border: '1px solid var(--border)',
+    borderRadius: 12,
+    padding: '10px 12px',
+    boxShadow: '0 10px 28px var(--shadow)',
   },
   goDeeperBtn: {
     width: '100%',
