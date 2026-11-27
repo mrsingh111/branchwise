@@ -9,6 +9,25 @@ Made freely for everyone by **[Sewak Singh](https://github.com/mrsingh111)**.
 
 ---
 
+## Screenshots & How It Works
+
+### 1. Editorial Workspace & Active Lattice
+Type any topic or question, pick from curated starters, or jump back into your active lattice with a live mini-graph preview.
+
+![MindLattice Home Workspace](docs/screenshots/home-workspace.png)
+
+### 2. Interactive 3-Level Mind Map (Dark & Light)
+Click any branch to expand its sub-nodes and on-canvas explanation callouts, use **Go Deeper with AI**, or query the lattice directly.
+
+![MindLattice 3-Level Mind Map](docs/screenshots/mindmap-dark.png)
+
+### 3. Mobile-Ready Canvas & Bring Your Own AI Key
+Works cleanly on phone screens (`390×844`) and supports 11 developer AI providers (including free-tier **OpenRouter** and **Groq**).
+
+| Mobile View (`390×844`) | AI API Configuration |
+| :---: | :---: |
+| ![Mobile Canvas](docs/screenshots/mobile-canvas.png) | ![AI API Configuration](docs/screenshots/api-config.png) |
+
 ## Features
 
 - **3-Level Interactive Mind Maps:** Central topic → color-coded branch cards → sub-node pills → on-canvas explanation callouts, with automatic collision-free spacing.
