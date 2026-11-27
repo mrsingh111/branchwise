@@ -112,8 +112,62 @@ function uid(prefix = 'n') {
 }
 
 // --- Demo fallback generators so the app works immediately without an API key ---
-function buildDemoMindMap(topic) {
-  const t = topic.trim();
+function buildDemoMindMap(topic, sourceText = '') {
+  const t = topic.trim() || 'Source Notes';
+  if (sourceText.trim()) {
+    const lines = sourceText
+      .split(/\n+/)
+      .map((l) => l.replace(/^[-*#\d.]+\s*/, '').trim())
+      .filter((l) => l.length > 8);
+    const chunks = lines.length >= 6 ? lines.slice(0, 6) : [
+      ...lines,
+      'Core thesis & main argument',
+      'Key mechanisms & evidence',
+      'Practical implications',
+      'Hidden assumptions & edge cases',
+      'Open questions to verify',
+      'Actionable next steps',
+    ].slice(0, 6);
+
+    return {
+      id: uid('map'),
+      title: t,
+      createdAt: 'today',
+      isDemo: true,
+      fromSource: true,
+      exploredBranchIds: [],
+      masteredNodeIds: [],
+      reviewNodeIds: [],
+      crossLinks: [],
+      branches: chunks.map((chunk, idx) => {
+        const shortLabel = chunk.split(/\s+/).slice(0, 4).join(' ');
+        return {
+          id: `b${idx + 1}`,
+          label: shortLabel.length > 28 ? shortLabel.slice(0, 26) + '…' : shortLabel,
+          colorIdx: idx % 6,
+          summary: `Extracted from your source: "${chunk.slice(0, 110)}${chunk.length > 110 ? '…' : ''}"`,
+          children: [
+            {
+              id: `b${idx + 1}-1`,
+              label: 'Source takeaway',
+              summary: `Key point grounded in your pasted material around "${shortLabel}".`,
+            },
+            {
+              id: `b${idx + 1}-2`,
+              label: 'Why it matters',
+              summary: `How "${shortLabel}" connects to the broader argument in ${t}.`,
+            },
+            {
+              id: `b${idx + 1}-3`,
+              label: 'Check understanding',
+              summary: `Test yourself: can you explain "${shortLabel}" without looking?`,
+            },
+          ],
+        };
+      }),
+    };
+  }
+
   const lenses = [
     { label: 'Core fundamentals', focus: 'the foundational principles and first-principles mechanics' },
     { label: 'How it works', focus: 'the step-by-step process, workflow, or feedback loop' },
@@ -129,6 +183,9 @@ function buildDemoMindMap(topic) {
     createdAt: 'today',
     isDemo: true,
     exploredBranchIds: [],
+    masteredNodeIds: [],
+    reviewNodeIds: [],
+    crossLinks: [],
     branches: lenses.map((lens, idx) => ({
       id: `b${idx + 1}`,
       label: lens.label,
@@ -155,10 +212,10 @@ function buildDemoMindMap(topic) {
   };
 }
 
-export async function generateMindMap(topic, settings) {
+export async function generateMindMap(topic, settings, sourceText = '') {
   if (assertApiOrDemo(settings) === 'demo') {
     await new Promise((r) => setTimeout(r, 650));
-    return buildDemoMindMap(topic);
+    return buildDemoMindMap(topic, sourceText);
   }
 
   const systemPrompt = `${settings.customSystemPrompt}
@@ -179,10 +236,14 @@ Return ONLY valid JSON with this exact schema:
 }
 Create 6 distinct, logical branches with 3 children each.`;
 
+  const userPrompt = sourceText.trim()
+    ? `Extract a MindLattice knowledge map grounded strictly in this source material (title: "${topic || 'Source Notes'}"):\n\n${sourceText.slice(0, 12000)}`
+    : `Create a MindLattice knowledge map for: "${topic}"`;
+
   const content = await callChatCompletion(
     [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Create a MindLattice knowledge map for: "${topic}"` },
+      { role: 'user', content: userPrompt },
     ],
     settings,
     true
@@ -203,11 +264,55 @@ Create 6 distinct, logical branches with 3 children each.`;
 
   return {
     id: uid('map'),
-    title: parsed.title || topic,
+    title: parsed.title || topic || 'Source Notes',
     createdAt: 'today',
     isDemo: false,
+    fromSource: Boolean(sourceText.trim()),
     exploredBranchIds: [],
+    masteredNodeIds: [],
+    reviewNodeIds: [],
+    crossLinks: [],
     branches,
+  };
+}
+
+export async function synthesizeNodes(map, nodeA, nodeB, settings) {
+  if (assertApiOrDemo(settings) === 'demo') {
+    await new Promise((r) => setTimeout(r, 400));
+    return {
+      id: uid('link'),
+      fromId: nodeA.id,
+      toId: nodeB.id,
+      fromLabel: nodeA.label,
+      toLabel: nodeB.label,
+      insight: `"${nodeA.label}" and "${nodeB.label}" reinforce each other inside ${map.title}: mastering the first makes the second easier to apply without blind spots.`,
+    };
+  }
+
+  const systemPrompt = `${settings.customSystemPrompt}
+Compare two concepts from a knowledge map and explain their non-obvious connection, tension, or dependency in 1-2 crisp sentences.
+Return ONLY valid JSON: { "insight": "1-2 sentence synthesis" }`;
+
+  const content = await callChatCompletion(
+    [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: `Topic: "${map.title}"\nConcept A: "${nodeA.label}" (${nodeA.summary || ''})\nConcept B: "${nodeB.label}" (${nodeB.summary || ''})\nHow do these two ideas interact, reinforce, or contradict each other?`,
+      },
+    ],
+    settings,
+    true
+  );
+
+  const parsed = extractJson(content);
+  return {
+    id: uid('link'),
+    fromId: nodeA.id,
+    toId: nodeB.id,
+    fromLabel: nodeA.label,
+    toLabel: nodeB.label,
+    insight: parsed.insight || `${nodeA.label} ↔ ${nodeB.label}`,
   };
 }
 

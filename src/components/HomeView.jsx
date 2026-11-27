@@ -10,6 +10,7 @@ import {
   HelpCircle,
   Heart,
   X,
+  FileText,
 } from 'lucide-react';
 import { BRANCH_COLORS, TRENDING_TOPICS } from '../data/presets';
 
@@ -66,6 +67,8 @@ export default function HomeView({
   onOpenSettings,
 }) {
   const [input, setInput] = useState('');
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [sourceText, setSourceText] = useState('');
   const [supportOpen, setSupportOpen] = useState(false);
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
 
@@ -81,9 +84,12 @@ export default function HomeView({
   const handleBuildMap = (e) => {
     e.preventDefault();
     const topic = input.trim();
-    if (!topic) return;
+    const src = sourceText.trim();
+    if (!topic && !src) return;
     setInput('');
-    onCreateMap(topic);
+    setSourceText('');
+    setSourceOpen(false);
+    onCreateMap(topic || 'Source Notes', src);
   };
 
   return (
@@ -183,27 +189,57 @@ export default function HomeView({
           </p>
 
           <form onSubmit={handleBuildMap} className="ml-input-box" style={styles.promptBox}>
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Enter a topic, concept, or question..."
-              style={styles.promptInput}
-            />
-            <div style={styles.promptActions}>
-              <button
-                type="button"
-                onClick={() => onOpenChat(input.trim())}
-                className="ml-btn"
-                style={styles.chatBtn}
-              >
-                <MessageSquare size={14} />
-                <span>Chat</span>
-              </button>
-              <button type="submit" className="ml-btn" style={styles.buildBtn}>
-                <span>Build Map</span>
-                <ArrowRight size={14} />
-              </button>
+            <div style={styles.promptRow}>
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={
+                  sourceOpen
+                    ? 'Optional title for your pasted notes/article...'
+                    : 'Enter a topic, concept, or question...'
+                }
+                style={styles.promptInput}
+              />
+              <div style={styles.promptActions}>
+                <button
+                  type="button"
+                  onClick={() => setSourceOpen((s) => !s)}
+                  className="ml-btn"
+                  style={{
+                    ...styles.chatBtn,
+                    borderColor: sourceOpen ? 'var(--accent)' : 'var(--border)',
+                    color: sourceOpen ? 'var(--text)' : 'var(--text-soft)',
+                  }}
+                  title="Paste article, lecture notes, or code to map"
+                >
+                  <FileText size={14} />
+                  <span>Paste Source</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenChat(input.trim())}
+                  className="ml-btn"
+                  style={styles.chatBtn}
+                >
+                  <MessageSquare size={14} />
+                  <span>Chat</span>
+                </button>
+                <button type="submit" className="ml-btn" style={styles.buildBtn}>
+                  <span>{sourceOpen && sourceText.trim() ? 'Extract Map' : 'Build Map'}</span>
+                  <ArrowRight size={14} />
+                </button>
+              </div>
             </div>
+
+            {sourceOpen && (
+              <textarea
+                rows={4}
+                value={sourceText}
+                onChange={(e) => setSourceText(e.target.value)}
+                placeholder="Paste raw lecture notes, an article, documentation, or code here — MindLattice will extract its core mental model..."
+                style={styles.sourceTextarea}
+              />
+            )}
           </form>
         </section>
 
@@ -521,14 +557,31 @@ const styles = {
   },
   promptBox: {
     display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
+    flexDirection: 'column',
     gap: 8,
     background: 'var(--surface)',
     border: '1px solid var(--border-strong)',
     borderRadius: 10,
     padding: 7,
     boxShadow: '0 6px 22px var(--shadow)',
+  },
+  promptRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sourceTextarea: {
+    width: '100%',
+    background: 'var(--bg)',
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    padding: '10px 12px',
+    color: 'var(--text)',
+    fontSize: 13,
+    lineHeight: 1.5,
+    resize: 'vertical',
+    outline: 'none',
   },
   promptInput: {
     flex: '1 1 260px',

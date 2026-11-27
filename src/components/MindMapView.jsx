@@ -16,9 +16,14 @@ import {
   Settings,
   Sun,
   Moon,
+  EyeOff,
+  Eye,
+  Link2,
+  Check,
+  RotateCcw,
 } from 'lucide-react';
 import { BRANCH_COLORS } from '../data/presets';
-import { askAboutMap, expandNodeWithAI } from '../services/aiProvider';
+import { askAboutMap, expandNodeWithAI, synthesizeNodes } from '../services/aiProvider';
 
 const CANVAS_W = 3600;
 const CANVAS_H = 3000;
@@ -105,6 +110,16 @@ export default function MindMapView({
   const [latestReply, setLatestReply] = useState(null);
   const [deepLoading, setDeepLoading] = useState(false);
 
+  // Spatial Active Recall & Mastery
+  const [recallMode, setRecallMode] = useState(false);
+  const [revealedIds, setRevealedIds] = useState(() => new Set());
+
+  // Cross-Node Synthesis
+  const [linkMode, setLinkMode] = useState(false);
+  const [linkSource, setLinkSource] = useState(null);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [activeLink, setActiveLink] = useState(null);
+
   const layout = useMemo(() => {
     const angles = getBranchAngles(map.branches.length);
     const branchRadius = 320;
@@ -183,6 +198,65 @@ export default function MindMapView({
 
     return rawBranches;
   }, [map.branches, expandedBranches]);
+
+  const nodeCoords = useMemo(() => {
+    const coords = {};
+    layout.forEach((b) => {
+      coords[b.branch.id] = { x: b.bx, y: b.by };
+      b.childPositions.forEach((cp) => {
+        coords[cp.id] = { x: cp.x, y: cp.y };
+      });
+    });
+    return coords;
+  }, [layout]);
+
+  const masteredSet = useMemo(() => new Set(map.masteredNodeIds || []), [map.masteredNodeIds]);
+  const reviewSet = useMemo(() => new Set(map.reviewNodeIds || []), [map.reviewNodeIds]);
+
+  const setNodeMastery = (nodeId, status) => {
+    const mastered = new Set(map.masteredNodeIds || []);
+    const review = new Set(map.reviewNodeIds || []);
+    mastered.delete(nodeId);
+    review.delete(nodeId);
+    if (status === 'mastered') mastered.add(nodeId);
+    if (status === 'review') review.add(nodeId);
+    onUpdateMap({
+      ...map,
+      masteredNodeIds: Array.from(mastered),
+      reviewNodeIds: Array.from(review),
+    });
+  };
+
+  const handleNodeInteraction = async (branch, node, isBranch) => {
+    if (linkMode) {
+      if (!linkSource) {
+        setLinkSource(node);
+        return;
+      }
+      if (linkSource.id === node.id) return;
+      setLinkLoading(true);
+      try {
+        const newLink = await synthesizeNodes(map, linkSource, node, settings);
+        onUpdateMap({
+          ...map,
+          crossLinks: [...(map.crossLinks || []), newLink],
+        });
+        setActiveLink(newLink);
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        setLinkLoading(false);
+        setLinkMode(false);
+        setLinkSource(null);
+      }
+      return;
+    }
+
+    if (recallMode) {
+      setRevealedIds((prev) => new Set(prev).add(node.id));
+    }
+    setSelectedNode({ branch, node, isBranch });
+  };
 
   const markBranchExplored = (branchId) => {
     const existing = new Set(map.exploredBranchIds || []);
@@ -395,6 +469,11 @@ export default function MindMapView({
             <span style={{ ...styles.progressPill, fontSize: isMobile ? 11 : 12.5 }}>
               {exploredCount}/{map.branches.length} {!isMobile && 'explored'}
             </span>
+            {masteredSet.size > 0 && (
+              <span style={{ ...styles.masteryPill, fontSize: isMobile ? 10.5 : 12 }}>
+                {masteredSet.size} mastered
+              </span>
+            )}
           </div>
           {!isMobile && (
             <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
@@ -441,6 +520,29 @@ export default function MindMapView({
           <Settings size={isMobile ? 15 : 17} />
         </button>
       </header>
+
+      {/* Synthesis Mode Banner */}
+      {linkMode && (
+        <div style={styles.linkBanner} className="no-print">
+          <Link2 size={14} color="#D49B38" />
+          <span>
+            {linkLoading
+              ? 'Synthesizing connection...'
+              : linkSource
+              ? `Connect “${linkSource.label}” → click a second node`
+              : 'Link Ideas: click any first node'}
+          </span>
+          <button
+            onClick={() => {
+              setLinkMode(false);
+              setLinkSource(null);
+            }}
+            style={styles.tinyClose}
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       {/* Search overlay */}
       {searchOpen && (
@@ -527,6 +629,26 @@ export default function MindMapView({
               </g>
             );
           })}
+
+          {/* Cross-Node Synthesis Arcs */}
+          {(map.crossLinks || []).map((link) => {
+            const a = nodeCoords[link.fromId];
+            const b = nodeCoords[link.toId];
+            if (!a || !b) return null;
+            const mx = (a.x + b.x) / 2;
+            const my = (a.y + b.y) / 2 - 48;
+            return (
+              <path
+                key={link.id}
+                d={`M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`}
+                stroke="#D49B38"
+                strokeWidth="2"
+                strokeDasharray="6 4"
+                fill="none"
+                opacity="0.85"
+              />
+            );
+          })}
         </svg>
 
         {/* Central Topic Node */}
@@ -555,7 +677,13 @@ export default function MindMapView({
               <div
                 data-node
                 className="ml-node"
-                onClick={() => toggleBranch(branch, bx, by)}
+                onClick={() => {
+                  if (linkMode) {
+                    handleNodeInteraction(branch, branch, true);
+                  } else {
+                    toggleBranch(branch, bx, by);
+                  }
+                }}
                 style={{
                   ...styles.branchNode,
                   left: bx,
@@ -606,20 +734,27 @@ export default function MindMapView({
                   searchLower &&
                   (cp.label.toLowerCase().includes(searchLower) ||
                     cp.summary?.toLowerCase().includes(searchLower));
-                const cHigh = highlightedIds.has(cp.id) || cMatch;
+                const cHigh = highlightedIds.has(cp.id) || cMatch || linkSource?.id === cp.id;
+                const isBlurred = recallMode && !revealedIds.has(cp.id) && !masteredSet.has(cp.id);
+                const isMastered = masteredSet.has(cp.id);
+                const isReview = reviewSet.has(cp.id);
                 return (
                   <React.Fragment key={cp.id}>
                     <div
                       data-node
                       className="ml-node"
-                      onClick={() =>
-                        setSelectedNode({ branch, node: cp, isBranch: false })
-                      }
+                      onClick={() => handleNodeInteraction(branch, cp, false)}
                       style={{
                         ...styles.childNode,
                         left: cp.x,
                         top: cp.y,
-                        borderColor: cHigh ? color.accent : 'var(--border)',
+                        borderColor: isMastered
+                          ? '#52A87A'
+                          : isReview
+                          ? '#D49B38'
+                          : cHigh
+                          ? color.accent
+                          : 'var(--border)',
                         boxShadow: cHigh
                           ? `0 0 0 2px ${color.accent}, 0 8px 20px var(--shadow)`
                           : '0 6px 16px var(--shadow)',
@@ -630,20 +765,20 @@ export default function MindMapView({
                           width: 7,
                           height: 7,
                           borderRadius: 999,
-                          background: color.accent,
+                          background: isMastered ? '#52A87A' : isReview ? '#D49B38' : color.accent,
                           flexShrink: 0,
                         }}
                       />
-                      <span>{cp.label}</span>
+                      <span style={{ filter: isBlurred ? 'blur(5px)' : 'none', transition: 'filter 0.2s ease' }}>
+                        {cp.label}
+                      </span>
                     </div>
 
                     {/* Level 3: Callout explanation card right on the canvas */}
                     {cp.summary && (
                       <div
                         data-node
-                        onClick={() =>
-                          setSelectedNode({ branch, node: cp, isBranch: false })
-                        }
+                        onClick={() => handleNodeInteraction(branch, cp, false)}
                         style={{
                           ...styles.leafText,
                           left: cp.lx,
@@ -651,13 +786,36 @@ export default function MindMapView({
                           borderLeft: `2.5px solid ${color.accent}`,
                         }}
                       >
-                        {cp.summary}
+                        <div style={{ filter: isBlurred ? 'blur(5px)' : 'none', transition: 'filter 0.2s ease' }}>
+                          {cp.summary}
+                        </div>
                       </div>
                     )}
                   </React.Fragment>
                 );
               })}
             </React.Fragment>
+          );
+        })}
+
+        {/* Cross-Node Synthesis Badges */}
+        {(map.crossLinks || []).map((link) => {
+          const a = nodeCoords[link.fromId];
+          const b = nodeCoords[link.toId];
+          if (!a || !b) return null;
+          const mx = (a.x + b.x) / 2;
+          const my = (a.y + b.y) / 2 - 24;
+          return (
+            <button
+              key={link.id}
+              data-node
+              onClick={() => setActiveLink(link)}
+              style={{ ...styles.linkBadge, left: mx, top: my }}
+              title={`${link.fromLabel} ↔ ${link.toLabel}`}
+            >
+              <Link2 size={11} />
+              <span>Synthesis</span>
+            </button>
           );
         })}
       </div>
@@ -680,10 +838,76 @@ export default function MindMapView({
           <div style={{ fontSize: 14, fontWeight: 600, margin: '4px 0 8px' }}>
             {selectedNode.node.label}
           </div>
-          <button onClick={handleGoDeeper} disabled={deepLoading} style={styles.goDeeperBtn}>
-            {deepLoading ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
-            <span>{deepLoading ? 'Expanding...' : 'Go Deeper with AI (+sub-nodes)'}</span>
-          </button>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <button
+              onClick={() => setNodeMastery(selectedNode.node.id, masteredSet.has(selectedNode.node.id) ? null : 'mastered')}
+              style={{
+                ...styles.masteryBtn,
+                borderColor: masteredSet.has(selectedNode.node.id) ? '#52A87A' : 'var(--border)',
+                color: masteredSet.has(selectedNode.node.id) ? '#52A87A' : 'var(--text-soft)',
+              }}
+            >
+              <Check size={13} /> Mastered
+            </button>
+            <button
+              onClick={() => setNodeMastery(selectedNode.node.id, reviewSet.has(selectedNode.node.id) ? null : 'review')}
+              style={{
+                ...styles.masteryBtn,
+                borderColor: reviewSet.has(selectedNode.node.id) ? '#D49B38' : 'var(--border)',
+                color: reviewSet.has(selectedNode.node.id) ? '#D49B38' : 'var(--text-soft)',
+              }}
+            >
+              <RotateCcw size={12} /> Review
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <button onClick={handleGoDeeper} disabled={deepLoading} style={styles.goDeeperBtn}>
+              {deepLoading ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
+              <span>{deepLoading ? 'Expanding...' : 'Go Deeper with AI (+sub-nodes)'}</span>
+            </button>
+            <button
+              onClick={() => {
+                setLinkSource(selectedNode.node);
+                setLinkMode(true);
+                setSelectedNode(null);
+              }}
+              style={styles.connectBtn}
+            >
+              <Link2 size={13} />
+              <span>Synthesize with another node</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Cross-Link Synthesis Insight Card */}
+      {activeLink && (
+        <div data-scrollable style={styles.replyCard} className="no-print">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: '#D49B38', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Link2 size={13} /> {activeLink.fromLabel} ↔ {activeLink.toLabel}
+            </span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={() => {
+                  onUpdateMap({
+                    ...map,
+                    crossLinks: (map.crossLinks || []).filter((l) => l.id !== activeLink.id),
+                  });
+                  setActiveLink(null);
+                }}
+                style={{ ...styles.tinyClose, width: 'auto', padding: '0 8px', fontSize: 11 }}
+              >
+                Remove
+              </button>
+              <button onClick={() => setActiveLink(null)} style={styles.tinyClose}>
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>
+            {activeLink.insight}
+          </p>
         </div>
       )}
 
@@ -754,6 +978,40 @@ export default function MindMapView({
             </button>
             <button
               onClick={() => {
+                setRecallMode((r) => !r);
+                setRevealedIds(new Set());
+              }}
+              style={{
+                ...styles.toolBtn,
+                width: 'auto',
+                padding: '0 9px',
+                fontSize: 12,
+                color: recallMode ? '#52A87A' : 'var(--text-soft)',
+              }}
+              title="Blur nodes to test your memory"
+            >
+              {recallMode ? <Eye size={14} style={{ marginRight: 5 }} /> : <EyeOff size={14} style={{ marginRight: 5 }} />}
+              Recall
+            </button>
+            <button
+              onClick={() => {
+                setLinkMode((l) => !l);
+                setLinkSource(null);
+              }}
+              style={{
+                ...styles.toolBtn,
+                width: 'auto',
+                padding: '0 9px',
+                fontSize: 12,
+                color: linkMode ? '#D49B38' : 'var(--text-soft)',
+              }}
+              title="Synthesize a connection between any 2 nodes"
+            >
+              <Link2 size={14} style={{ marginRight: 5 }} />
+              Link
+            </button>
+            <button
+              onClick={() => {
                 if (expandedBranches.size === map.branches.length) {
                   setExpandedBranches(new Set());
                 } else {
@@ -763,7 +1021,7 @@ export default function MindMapView({
               style={{ ...styles.toolBtn, width: 'auto', padding: '0 10px', fontSize: 12 }}
             >
               <CheckCircle2 size={14} style={{ marginRight: 5 }} />
-              {expandedBranches.size === map.branches.length ? 'Collapse all' : 'Expand all'}
+              {expandedBranches.size === map.branches.length ? 'Collapse' : 'Expand all'}
             </button>
           </div>
         </div>
@@ -840,6 +1098,77 @@ const styles = {
     border: '1px solid var(--border)',
     color: 'var(--muted)',
     flexShrink: 0,
+  },
+  masteryPill: {
+    fontSize: 11,
+    padding: '2px 7px',
+    borderRadius: 4,
+    background: 'rgba(82, 168, 122, 0.14)',
+    border: '1px solid rgba(82, 168, 122, 0.35)',
+    color: '#52A87A',
+    flexShrink: 0,
+  },
+  linkBanner: {
+    position: 'fixed',
+    top: 66,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 26,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    background: 'var(--surface)',
+    border: '1px solid rgba(212, 155, 56, 0.45)',
+    borderRadius: 8,
+    padding: '7px 12px',
+    fontSize: 12.5,
+    color: 'var(--text)',
+    boxShadow: '0 8px 24px var(--shadow)',
+  },
+  linkBadge: {
+    position: 'absolute',
+    transform: 'translate(-50%, -50%)',
+    background: 'var(--surface)',
+    border: '1px solid #D49B38',
+    color: '#D49B38',
+    borderRadius: 999,
+    padding: '3px 9px',
+    fontSize: 11,
+    fontWeight: 600,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px var(--shadow)',
+  },
+  masteryBtn: {
+    flex: 1,
+    background: 'var(--surface-2)',
+    border: '1px solid',
+    borderRadius: 7,
+    padding: '6px 8px',
+    fontSize: 11.5,
+    fontWeight: 500,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    cursor: 'pointer',
+  },
+  connectBtn: {
+    width: '100%',
+    background: 'rgba(212, 155, 56, 0.12)',
+    border: '1px solid rgba(212, 155, 56, 0.35)',
+    color: '#D49B38',
+    borderRadius: 8,
+    padding: '7px 10px',
+    fontSize: 12,
+    fontWeight: 600,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    cursor: 'pointer',
   },
   quizBtn: {
     background: 'var(--surface)',

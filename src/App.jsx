@@ -47,10 +47,10 @@ export default function App() {
 
   const activeMap = maps.find((m) => m.id === activeMapId) || null;
 
-  const handleCreateMap = async (topic) => {
-    setGeneratingTopic(topic);
+  const handleCreateMap = async (topic, sourceText = '') => {
+    setGeneratingTopic(topic || 'Source Notes');
     try {
-      const newMap = await generateMindMap(topic, settings);
+      const newMap = await generateMindMap(topic, settings, sourceText);
       setMaps((prev) => [newMap, ...prev]);
       setActiveMapId(newMap.id);
       setView('map');

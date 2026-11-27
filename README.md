@@ -30,6 +30,9 @@ Works cleanly on phone screens (`390×844`) and supports 11 developer AI provide
 
 ## Features
 
+- **Source-Grounded Mapping (Paste Notes / Code / Articles):** Paste raw lecture notes, documentation, code, or articles to extract a structured 3-level lattice directly from your material.
+- **Spatial Active Recall & Mastery:** Toggle **Recall** mode to blur sub-nodes and callouts for active self-testing on the canvas, click to reveal, and track **Mastered / Review** progress.
+- **Cross-Node AI Synthesis:** Click **Link** to connect any two nodes across different branches — AI draws a dashed synthesis arc and explains how they reinforce, contradict, or depend on each other.
 - **3-Level Interactive Mind Maps:** Central topic → color-coded branch cards → sub-node pills → on-canvas explanation callouts, with automatic collision-free spacing.
 - **Go Deeper with AI:** Expand any branch or sub-node dynamically with new AI-generated child nodes.
 - **Map-Aware Q&A:** Query any lattice — answers point back to existing nodes and let you add new suggested nodes with one click.
