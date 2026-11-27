@@ -1,6 +1,6 @@
-# MindLattice
+# Branchwise
 
-An open-source, bring-your-own-key (BYOK) **visual AI thinking workspace** for turning any topic into an interactive 3-level knowledge lattice, exploring ideas in chat, and testing retention with quizzes.
+An open-source, bring-your-own-key (BYOK) **visual AI thinking workspace** for turning any topic or pasted source into an interactive 3-level knowledge tree, exploring ideas in chat, and testing retention with quizzes.
 
 Made freely for everyone by **[Sewak Singh](https://github.com/mrsingh111)**.
 
@@ -45,7 +45,7 @@ Works cleanly on phone screens (`390×844`) and supports 11 developer AI provide
 
 Click the API status pill in the top-right to configure any OpenAI-compatible endpoint:
 
-> **Free API Tip:** **OpenRouter** (free-tier models) and **Groq** both offer free limited API usage so you can try MindLattice without paying.
+> **Free API Tip:** **OpenRouter** (free-tier models) and **Groq** both offer free limited API usage so you can try Branchwise without paying.
 
 - **OpenRouter** (Free tier available)
 - **Groq** (Free tier available)
@@ -64,8 +64,8 @@ You can also use **Demo AI** mode without a key, or enable **"Require API key fo
 ## Quick Start
 
 ```bash
-git clone https://github.com/mrsingh111/mindlattice.git
-cd mindlattice
+git clone https://github.com/mrsingh111/branchwise.git
+cd branchwise
 npm install
 npm run dev
 ```
@@ -80,7 +80,7 @@ npm run build
 
 ## Support
 
-If MindLattice helps you learn or think faster, consider supporting my work:
+If Branchwise helps you learn or think faster, consider supporting my work:
 
 👉 **[buymeacoffee.com/sewak_singh](https://buymeacoffee.com/sewak_singh)**
 

@@ -86,7 +86,7 @@ export default function ThinkChatView({ initialPrompt, settings, theme, onToggle
           >
             {m.role === 'assistant' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 11, color: 'var(--teal)' }}>
-                <Sparkles size={12} /> MindLattice AI
+                <Sparkles size={12} /> Branchwise AI
               </div>
             )}
             <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55, fontSize: 14 }}>{m.content}</div>

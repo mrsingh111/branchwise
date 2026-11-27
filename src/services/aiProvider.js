@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'mindlattice_ai_settings_v1';
+const STORAGE_KEY = 'branchwise_ai_settings_v1';
 
 export const DEFAULT_SETTINGS = {
   provider: 'openai-compatible',
@@ -6,7 +6,7 @@ export const DEFAULT_SETTINGS = {
   apiKey: '',
   model: 'gpt-4o-mini',
   customSystemPrompt:
-    'You are MindLattice, an AI visual thinking partner. Break complex topics into clear, memorable, non-overlapping mental models, concise branch labels (2-5 words), and practical summaries.',
+    'You are Branchwise, an AI visual thinking partner. Break complex topics into clear, memorable, non-overlapping mental models, concise branch labels (2-5 words), and practical summaries.',
   useDemoIfNoKey: true,
 };
 
@@ -237,8 +237,8 @@ Return ONLY valid JSON with this exact schema:
 Create 6 distinct, logical branches with 3 children each.`;
 
   const userPrompt = sourceText.trim()
-    ? `Extract a MindLattice knowledge map grounded strictly in this source material (title: "${topic || 'Source Notes'}"):\n\n${sourceText.slice(0, 12000)}`
-    : `Create a MindLattice knowledge map for: "${topic}"`;
+    ? `Extract a Branchwise knowledge map grounded strictly in this source material (title: "${topic || 'Source Notes'}"):\n\n${sourceText.slice(0, 12000)}`
+    : `Create a Branchwise knowledge map for: "${topic}"`;
 
   const content = await callChatCompletion(
     [

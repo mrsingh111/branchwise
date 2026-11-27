@@ -107,7 +107,7 @@ export default function HomeView({
               strokeLinecap="round"
             />
           </svg>
-          <span style={{ ...styles.wordmark, fontSize: isMobile ? 15 : 18 }}>MindLattice</span>
+          <span style={{ ...styles.wordmark, fontSize: isMobile ? 15 : 18 }}>Branchwise</span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 10 }}>
@@ -236,7 +236,7 @@ export default function HomeView({
                 rows={4}
                 value={sourceText}
                 onChange={(e) => setSourceText(e.target.value)}
-                placeholder="Paste raw lecture notes, an article, documentation, or code here — MindLattice will extract its core mental model..."
+                placeholder="Paste raw lecture notes, an article, documentation, or code here — Branchwise will extract its core mental model..."
                 style={styles.sourceTextarea}
               />
             )}
@@ -429,7 +429,7 @@ export default function HomeView({
               </button>
             </div>
             <p style={{ margin: '0 0 16px', fontSize: 13.5, color: 'var(--text-soft)', lineHeight: 1.55 }}>
-              <strong>MindLattice</strong> is built freely for everyone to think clearly and learn faster. If you find it useful, your support keeps it going!
+              <strong>Branchwise</strong> is built freely for everyone to think clearly and learn faster. If you find it useful, your support keeps it going!
             </p>
             <a
               href="https://buymeacoffee.com/sewak_singh"

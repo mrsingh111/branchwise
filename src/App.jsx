@@ -8,8 +8,8 @@ import ThinkChatView from './components/ThinkChatView';
 import QuizModal from './components/QuizModal';
 import SettingsModal from './components/SettingsModal';
 
-const MAPS_KEY = 'mindlattice_saved_maps_v1';
-const THEME_KEY = 'mindlattice_theme_v1';
+const MAPS_KEY = 'branchwise_saved_maps_v1';
+const THEME_KEY = 'branchwise_theme_v1';
 
 function loadMaps() {
   try {
