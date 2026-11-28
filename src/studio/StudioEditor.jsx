@@ -67,7 +67,11 @@ import {
   exportDiagramPNG,
   exportDiagramPDF,
   downloadTextFile,
+  formatMermaidWithBranding,
+  formatJsonWithBranding,
+  formatCsvClean,
 } from './exportEngine';
+import { loadExportBranding, saveExportBranding } from './exportBranding';
 import { sanitizeExternalUrl, validateAndNormalizeDiagramJson } from './importValidation';
 import BranchHistoryDrawer from './BranchHistoryDrawer';
 import {
@@ -231,6 +235,7 @@ export default function StudioEditor({
   const [exportOpen, setExportOpen] = useState(false);
   const [exportTransparent, setExportTransparent] = useState(false);
   const [exportScale, setExportScale] = useState(2);
+  const [exportBranding, setExportBranding] = useState(() => loadExportBranding());
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(doc.title);
@@ -1954,7 +1959,7 @@ export default function StudioEditor({
               <input type="checkbox" checked={exportTransparent} onChange={(e) => setExportTransparent(e.target.checked)} />
               <span>Transparent background (PNG / SVG)</span>
             </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 16px', fontSize: 13 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 12px', fontSize: 13 }}>
               <span>PNG Scale:</span>
               {[1, 2, 3].map((s) => (
                 <button
@@ -1970,6 +1975,40 @@ export default function StudioEditor({
                 </button>
               ))}
             </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 12px', fontSize: 13 }}>
+              <span>Branding:</span>
+              {[
+                { id: 'standard', label: 'Standard' },
+                { id: 'minimal', label: 'Minimal' },
+                { id: 'none', label: 'None' },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setExportBranding(saveExportBranding(opt.id))}
+                  style={{
+                    ...styles.miniTextBtn,
+                    background: exportBranding === opt.id ? 'var(--accent)' : 'var(--surface-2)',
+                    color: exportBranding === opt.id ? 'var(--accent-inv)' : 'var(--text)',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ marginBottom: 14, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg)' }}>
+              <img
+                alt="Export preview with branding footer"
+                src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+                  generateDiagramSVG(nodes, edges, {
+                    theme,
+                    transparent: exportTransparent,
+                    branding: exportBranding,
+                    title: doc.title,
+                  })
+                )}`}
+                style={{ width: '100%', maxHeight: 170, objectFit: 'contain', display: 'block' }}
+              />
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <button
                 style={styles.exportActionBtn}
@@ -1978,6 +2017,7 @@ export default function StudioEditor({
                     scale: exportScale,
                     transparent: exportTransparent,
                     theme,
+                    branding: exportBranding,
                     filename: `${doc.title.replace(/\s+/g, '-').toLowerCase()}.png`,
                   });
                   setExportOpen(false);
@@ -1991,6 +2031,7 @@ export default function StudioEditor({
                   const svg = generateDiagramSVG(nodes, edges, {
                     theme,
                     transparent: exportTransparent,
+                    branding: exportBranding,
                     title: doc.title,
                   });
                   downloadTextFile(`${doc.title.replace(/\s+/g, '-').toLowerCase()}.svg`, svg, 'image/svg+xml');
@@ -2002,7 +2043,7 @@ export default function StudioEditor({
               <button
                 style={styles.exportActionBtn}
                 onClick={() => {
-                  exportDiagramPDF(nodes, edges, { theme: 'light', title: doc.title });
+                  exportDiagramPDF(nodes, edges, { theme: 'light', branding: exportBranding, title: doc.title });
                   setExportOpen(false);
                 }}
               >
@@ -2011,21 +2052,33 @@ export default function StudioEditor({
               <button
                 style={styles.exportActionBtn}
                 onClick={() => {
-                  downloadTextFile(`${doc.title.replace(/\s+/g, '-').toLowerCase()}.json`, JSON.stringify(doc, null, 2), 'application/json');
+                  const brandedJson = formatJsonWithBranding(doc, exportBranding);
+                  downloadTextFile(`${doc.title.replace(/\s+/g, '-').toLowerCase()}.json`, JSON.stringify(brandedJson, null, 2), 'application/json');
                   setExportOpen(false);
                 }}
               >
                 Export JSON
               </button>
               <button
-                style={{ ...styles.exportActionBtn, gridColumn: '1 / -1' }}
+                style={styles.exportActionBtn}
                 onClick={() => {
-                  const mmd = serializeToMermaid(nodes, edges, mermaidType, 'TD');
+                  const rawMmd = serializeToMermaid(nodes, edges, mermaidType, 'TD');
+                  const mmd = formatMermaidWithBranding(rawMmd, exportBranding);
                   downloadTextFile(`${doc.title.replace(/\s+/g, '-').toLowerCase()}.mmd`, mmd, 'text/plain');
                   setExportOpen(false);
                 }}
               >
                 Export Mermaid (.mmd)
+              </button>
+              <button
+                style={styles.exportActionBtn}
+                onClick={() => {
+                  const csv = formatCsvClean(nodes, edges);
+                  downloadTextFile(`${doc.title.replace(/\s+/g, '-').toLowerCase()}.csv`, csv, 'text/csv');
+                  setExportOpen(false);
+                }}
+              >
+                Export CSV (Raw)
               </button>
             </div>
           </div>

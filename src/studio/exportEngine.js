@@ -1,6 +1,14 @@
-// True Vector SVG, High-DPI PNG, PDF Print-Sheet, and JSON/Mermaid Export Engine
+// True Vector SVG, High-DPI PNG, PDF Print-Sheet, CSV, JSON, and Mermaid Export Engine
 
 import { buildEdgePath } from './shapeCatalog.js';
+import {
+  BRAND_INFO,
+  formatCsvClean,
+  formatJsonWithBranding,
+  formatMermaidWithBranding,
+  getVisualFooterSpec,
+  normalizeBrandingMode,
+} from './exportBranding.js';
 
 function escXml(str) {
   return String(str || '')
@@ -10,25 +18,43 @@ function escXml(str) {
     .replace(/"/g, '&quot;');
 }
 
-export function computeDiagramBounds(nodes, pad = 48) {
+export function computeDiagramBounds(nodes, pad = 48, branding = 'standard') {
+  const footer = getVisualFooterSpec(branding);
   if (!nodes.length) {
-    return { minX: 0, minY: 0, width: 800, height: 500 };
+    return {
+      minX: 0,
+      minY: 0,
+      contentHeight: 500,
+      width: 800,
+      height: 500 + footer.height,
+      footerHeight: footer.height,
+    };
   }
   const minX = Math.min(...nodes.map((n) => n.x)) - pad;
   const minY = Math.min(...nodes.map((n) => n.y)) - pad;
   const maxX = Math.max(...nodes.map((n) => n.x + n.w)) + pad;
   const maxY = Math.max(...nodes.map((n) => n.y + n.h)) + pad;
+  const contentWidth = Math.max(320, maxX - minX);
+  const contentHeight = Math.max(180, maxY - minY);
   return {
     minX,
     minY,
-    width: Math.max(240, maxX - minX),
-    height: Math.max(180, maxY - minY),
+    contentHeight,
+    width: contentWidth,
+    height: contentHeight + footer.height,
+    footerHeight: footer.height,
   };
 }
 
 function renderNodeToSvg(node, palette) {
   const { x, y, w, h, shape, label, fill, stroke, textColor, fontSize = 13, metadata } = node;
-  const bg = fill || (shape === 'container' ? 'rgba(110,138,230,0.05)' : shape === 'sticky' ? 'rgba(250,204,21,0.22)' : palette.surface);
+  const bg =
+    fill ||
+    (shape === 'container'
+      ? 'rgba(110,138,230,0.05)'
+      : shape === 'sticky'
+      ? 'rgba(250,204,21,0.22)'
+      : palette.surface);
   const border = stroke || (shape === 'container' ? palette.borderStrong : '#6E8AE6');
   const fg = textColor || palette.text;
   const cx = x + w / 2;
@@ -77,13 +103,39 @@ function renderNodeToSvg(node, palette) {
 }
 
 export function generateDiagramSVG(nodes, edges, options = {}) {
-  const { theme = 'dark', transparent = false, title = 'Branchwise Diagram' } = options;
+  const {
+    theme = 'dark',
+    transparent = false,
+    title = 'Branchwise Diagram',
+    branding = 'standard',
+  } = options;
+  const mode = normalizeBrandingMode(branding);
+  const footer = getVisualFooterSpec(mode);
+
   const palette =
     theme === 'light'
-      ? { bg: '#F6F7F9', surface: '#FFFFFF', text: '#14171F', textSoft: '#475063', borderStrong: '#94A3B8', edge: '#475063' }
-      : { bg: '#0F1115', surface: '#171A21', text: '#F2F4F8', textSoft: '#B6BCC8', borderStrong: '#4B5563', edge: '#94A3B8' };
+      ? {
+          bg: '#F6F7F9',
+          surface: '#FFFFFF',
+          text: '#14171F',
+          textSoft: '#475063',
+          muted: '#64748B',
+          divider: 'rgba(15, 23, 42, 0.08)',
+          borderStrong: '#94A3B8',
+          edge: '#475063',
+        }
+      : {
+          bg: '#0F1115',
+          surface: '#171A21',
+          text: '#F2F4F8',
+          textSoft: '#B6BCC8',
+          muted: '#7C8494',
+          divider: 'rgba(255, 255, 255, 0.08)',
+          borderStrong: '#4B5563',
+          edge: '#94A3B8',
+        };
 
-  const bounds = computeDiagramBounds(nodes);
+  const bounds = computeDiagramBounds(nodes, 48, mode);
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
 
   const containers = nodes.filter((n) => n.shape === 'container');
@@ -110,9 +162,27 @@ export function generateDiagramSVG(nodes, edges, options = {}) {
     ? ''
     : `<rect x="${bounds.minX}" y="${bounds.minY}" width="${bounds.width}" height="${bounds.height}" fill="${palette.bg}" />`;
 
+  const metadataBlock =
+    mode === 'none'
+      ? ''
+      : `\n  <metadata>${escXml(`${BRAND_INFO.attribution} (${BRAND_INFO.website}) · ${BRAND_INFO.product} v${BRAND_INFO.version}`)}</metadata>`;
+
+  const footerTopY = bounds.minY + bounds.contentHeight;
+  const footerSvg =
+    footer.height > 0
+      ? `\n  <g data-branchwise-footer="${mode}">
+    ${
+      footer.showDivider
+        ? `<line x1="${bounds.minX + 16}" y1="${footerTopY}" x2="${bounds.minX + bounds.width - 16}" y2="${footerTopY}" stroke="${palette.divider}" stroke-width="1" />`
+        : ''
+    }
+    <text x="${bounds.minX + bounds.width - 16}" y="${bounds.minY + bounds.height - 9}" text-anchor="end" fill="${palette.muted}" font-family="Inter, sans-serif" font-size="${footer.fontSize}" font-weight="500">${escXml(footer.text)}</text>
+  </g>`
+      : '';
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(bounds.width)}" height="${Math.round(bounds.height)}" viewBox="${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}">
-  <title>${escXml(title)}</title>
+  <title>${escXml(title)}</title>${metadataBlock}
   <defs>
     <marker id="bw-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 1 L 10 5 L 0 9 z" fill="${palette.edge}" />
@@ -124,7 +194,7 @@ export function generateDiagramSVG(nodes, edges, options = {}) {
   ${bgRect}
   ${containers.map((n) => renderNodeToSvg(n, palette)).join('\n')}
   ${edgeSvgs}
-  ${regular.map((n) => renderNodeToSvg(n, palette)).join('\n')}
+  ${regular.map((n) => renderNodeToSvg(n, palette)).join('\n')}${footerSvg}
 </svg>`;
 }
 
@@ -141,9 +211,16 @@ export function downloadTextFile(filename, content, mime = 'text/plain;charset=u
 }
 
 export async function exportDiagramPNG(nodes, edges, options = {}) {
-  const { scale = 2, transparent = false, theme = 'dark', filename = 'branchwise-diagram.png' } = options;
-  const svgStr = generateDiagramSVG(nodes, edges, { theme, transparent });
-  const bounds = computeDiagramBounds(nodes);
+  const {
+    scale = 2,
+    transparent = false,
+    theme = 'dark',
+    branding = 'standard',
+    filename = 'branchwise-diagram.png',
+  } = options;
+  const mode = normalizeBrandingMode(branding);
+  const svgStr = generateDiagramSVG(nodes, edges, { theme, transparent, branding: mode });
+  const bounds = computeDiagramBounds(nodes, 48, mode);
   const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(svgBlob);
 
@@ -181,27 +258,44 @@ export async function exportDiagramPNG(nodes, edges, options = {}) {
   });
 }
 
-export function exportDiagramPDF(nodes, edges, options = {}) {
-  const { theme = 'light', title = 'Branchwise Diagram' } = options;
-  const svgStr = generateDiagramSVG(nodes, edges, { theme, transparent: false, title });
-  const win = window.open('', '_blank', 'width=1024,height=768');
-  if (!win) {
-    throw new Error('Popup blocked — please allow popups to print/save PDF.');
-  }
-  win.document.write(`<!DOCTYPE html>
+export function buildDiagramPDFHtml(nodes, edges, options = {}) {
+  const { theme = 'light', title = 'Branchwise Diagram', branding = 'standard' } = options;
+  const mode = normalizeBrandingMode(branding);
+  const footer = getVisualFooterSpec(mode);
+  // Render SVG unbranded inside the PDF sheet and place branding in the dedicated page footer
+  const svgStr = generateDiagramSVG(nodes, edges, { theme, transparent: false, title, branding: 'none' });
+  const footerHtml =
+    footer.height > 0
+      ? `<footer class="bw-pdf-footer">${escXml(footer.text)}</footer>`
+      : '';
+
+  return `<!DOCTYPE html>
 <html>
 <head>
   <title>${escXml(title)}</title>
   <style>
     @page { size: auto; margin: 12mm; }
-    body { margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: Inter, sans-serif; }
+    body { margin: 0; display: flex; flex-direction: column; min-height: calc(100vh - 24mm); font-family: Inter, sans-serif; color: #475063; }
+    .bw-pdf-content { flex: 1; display: flex; align-items: center; justify-content: center; }
     svg { max-width: 100%; height: auto; }
+    .bw-pdf-footer { margin-top: 12px; padding-top: 8px; border-top: 1px solid #e2e8f0; text-align: right; font-size: ${footer.fontSize || 10}px; color: #64748b; }
   </style>
 </head>
 <body>
-  ${svgStr}
+  <div class="bw-pdf-content">${svgStr}</div>
+  ${footerHtml}
   <script>window.onload = () => { setTimeout(() => { window.print(); }, 250); };</script>
 </body>
-</html>`);
+</html>`;
+}
+
+export function exportDiagramPDF(nodes, edges, options = {}) {
+  const win = window.open('', '_blank', 'width=1024,height=768');
+  if (!win) {
+    throw new Error('Popup blocked — please allow popups to print/save PDF.');
+  }
+  win.document.write(buildDiagramPDFHtml(nodes, edges, options));
   win.document.close();
 }
+
+export { formatMermaidWithBranding, formatJsonWithBranding, formatCsvClean };

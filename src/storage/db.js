@@ -5,7 +5,58 @@ const DB_VERSION = 1;
 const DOC_STORE = 'documents';
 const META_STORE = 'meta';
 const LEGACY_MAPS_KEY = 'branchwise_saved_maps_v1';
+const DELETED_IDS_KEY = 'branchwise_deleted_ids_v1';
 const RECENT_TEMPLATES_KEY = 'branchwise_recent_templates_v1';
+
+function readLocalDocsSafe() {
+  try {
+    if (typeof localStorage === 'undefined') return [];
+    const raw = localStorage.getItem(LEGACY_MAPS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(normalizeDocument).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readDeletedTombstones() {
+  try {
+    if (typeof localStorage === 'undefined') return {};
+    const raw = localStorage.getItem(DELETED_IDS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function recordDeletedTombstone(id) {
+  try {
+    if (typeof localStorage === 'undefined' || !id) return;
+    const map = readDeletedTombstones();
+    map[id] = Date.now();
+    // Keep at most 200 recent tombstones
+    const entries = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 200);
+    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // ignore
+  }
+}
+
+function clearDeletedTombstone(id) {
+  try {
+    if (typeof localStorage === 'undefined' || !id) return;
+    const map = readDeletedTombstones();
+    if (Object.prototype.hasOwnProperty.call(map, id)) {
+      delete map[id];
+      localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(map));
+    }
+  } catch {
+    // ignore
+  }
+}
 
 export const CURRENT_SCHEMA_VERSION = 2;
 
@@ -253,51 +304,75 @@ export function compareBranchVersions(verA, verB) {
 }
 
 export async function loadDocumentsFromDB(fallbackDocs = []) {
+  const localDocs = readLocalDocsSafe();
+  const tombstones = readDeletedTombstones();
+
   try {
     const db = await openDatabase();
-    const docs = await new Promise((resolve, reject) => {
+    const rawIdbDocs = await new Promise((resolve, reject) => {
       const tx = db.transaction(DOC_STORE, 'readonly');
       const store = tx.objectStore(DOC_STORE);
       const req = store.getAll();
       req.onsuccess = () => resolve(req.result || []);
       req.onerror = () => reject(req.error);
     });
-
-    if (docs.length > 0) {
-      db.close();
-      return docs.map(normalizeDocument).filter(Boolean).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    }
-
-    // Migrate from localStorage if IDB is empty
-    let legacy = [];
-    try {
-      const raw = localStorage.getItem(LEGACY_MAPS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) legacy = parsed;
-      }
-    } catch {
-      // ignore
-    }
-
-    const seed = (legacy.length > 0 ? legacy : fallbackDocs).map(normalizeDocument).filter(Boolean);
-    if (seed.length > 0) {
-      await saveAllDocumentsToDB(seed);
-    }
     db.close();
-    return seed;
-  } catch {
-    // Fallback to localStorage
-    try {
-      const raw = localStorage.getItem(LEGACY_MAPS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map(normalizeDocument).filter(Boolean);
-        }
+
+    const idbDocs = rawIdbDocs.map(normalizeDocument).filter(Boolean);
+
+    if (idbDocs.length === 0 && localDocs.length === 0) {
+      const seed = fallbackDocs.map(normalizeDocument).filter(Boolean);
+      if (seed.length > 0) {
+        await saveAllDocumentsToDB(seed);
       }
-    } catch {
-      // ignore
+      return seed;
+    }
+
+    // Reconcile IndexedDB and localStorage fallback without overwriting newer IDB versions
+    const merged = new Map();
+    let needsIdbSync = false;
+
+    for (const doc of idbDocs) {
+      const deletedAt = tombstones[doc.id];
+      if (typeof deletedAt === 'number' && deletedAt >= (doc.updatedAt || 0)) {
+        needsIdbSync = true;
+        continue;
+      }
+      merged.set(doc.id, doc);
+    }
+
+    for (const localDoc of localDocs) {
+      const deletedAt = tombstones[localDoc.id];
+      if (typeof deletedAt === 'number' && deletedAt >= (localDoc.updatedAt || 0)) {
+        continue;
+      }
+      const existing = merged.get(localDoc.id);
+      if (!existing) {
+        merged.set(localDoc.id, localDoc);
+        needsIdbSync = true;
+      } else if ((localDoc.updatedAt || 0) > (existing.updatedAt || 0)) {
+        merged.set(localDoc.id, localDoc);
+        needsIdbSync = true;
+      }
+    }
+
+    const reconciled = Array.from(merged.values()).sort(
+      (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
+    );
+
+    if (needsIdbSync) {
+      await saveAllDocumentsToDB(reconciled);
+    }
+
+    return reconciled;
+  } catch {
+    // Fallback to localStorage (filtering out deleted tombstones)
+    const filteredLocal = localDocs.filter((doc) => {
+      const deletedAt = tombstones[doc.id];
+      return !(typeof deletedAt === 'number' && deletedAt >= (doc.updatedAt || 0));
+    });
+    if (filteredLocal.length > 0) {
+      return filteredLocal.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     }
     return fallbackDocs.map(normalizeDocument).filter(Boolean);
   }
@@ -356,6 +431,7 @@ export async function saveDocumentToDB(doc) {
   }
 
   const ok = idbSaved || localSaved;
+  if (ok) clearDeletedTombstone(normalized.id);
   return {
     ok,
     idbSaved,
@@ -415,6 +491,7 @@ export async function deleteDocumentFromDB(id) {
 
   // Never claim success if IndexedDB exists and failed, or if the doc remains in localStorage
   const ok = !docRemainsInLocal && (hasIdb ? idbDeleted : localDeleted);
+  if (ok) recordDeletedTombstone(id);
   return {
     ok,
     idbDeleted,

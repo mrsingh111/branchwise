@@ -19,14 +19,21 @@ import {
 
 describe('Document Schema, Branching, Snapshots & Storage Fallback', () => {
   let originalLocalStorage;
+  let originalIndexedDB;
 
   beforeEach(() => {
     originalLocalStorage = globalThis.localStorage;
+    originalIndexedDB = globalThis.indexedDB;
   });
 
   afterEach(() => {
     Object.defineProperty(globalThis, 'localStorage', {
       value: originalLocalStorage,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(globalThis, 'indexedDB', {
+      value: originalIndexedDB,
       configurable: true,
       writable: true,
     });
@@ -210,5 +217,104 @@ describe('Document Schema, Branching, Snapshots & Storage Fallback', () => {
     const delFail = await deleteDocumentFromDB(docA.id);
     expect(delFail.ok).toBe(false);
     expect(delFail.error).toContain('StorageReadOnlyError');
+  });
+
+  it('reconciles temporary IndexedDB failure fallback docs on recovery without overwriting newer IDB docs or reviving deleted docs', async () => {
+    const localMap = new Map();
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        getItem: (k) => (localMap.has(k) ? localMap.get(k) : null),
+        setItem: (k, v) => localMap.set(k, String(v)),
+      },
+      configurable: true,
+    });
+
+    // In-memory mock IndexedDB
+    const idbStore = new Map();
+    let idbOnline = true;
+    const mockIndexedDB = {
+      open: () => {
+        const req = {};
+        queueMicrotask(() => {
+          if (!idbOnline) {
+            req.error = new Error('IDB temporarily unavailable');
+            req.onerror?.();
+            return;
+          }
+          req.result = {
+            objectStoreNames: { contains: () => true },
+            close: () => {},
+            transaction: () => {
+              const tx = {};
+              tx.objectStore = () => ({
+                getAll: () => {
+                  const r = {};
+                  queueMicrotask(() => {
+                    r.result = Array.from(idbStore.values());
+                    r.onsuccess?.();
+                  });
+                  return r;
+                },
+                put: (doc) => {
+                  idbStore.set(doc.id, doc);
+                },
+                delete: (id) => {
+                  idbStore.delete(id);
+                },
+                clear: () => {
+                  idbStore.clear();
+                },
+              });
+              queueMicrotask(() => tx.oncomplete?.());
+              return tx;
+            },
+          };
+          req.onsuccess?.();
+        });
+        return req;
+      },
+    };
+    Object.defineProperty(globalThis, 'indexedDB', {
+      value: mockIndexedDB,
+      configurable: true,
+    });
+
+    const doc1 = { ...createDiagramDocument('Doc 1'), updatedAt: 100 };
+    const doc3 = { ...createDiagramDocument('Doc 3'), updatedAt: 300 };
+    const docDeleted = { ...createDiagramDocument('Doc Deleted'), updatedAt: 100 };
+    idbStore.set(doc1.id, doc1);
+    idbStore.set(doc3.id, doc3);
+    idbStore.set(docDeleted.id, docDeleted);
+
+    // Delete docDeleted while online; also place a stale copy in localStorage
+    const delRes = await deleteDocumentFromDB(docDeleted.id);
+    expect(delRes.ok).toBe(true);
+
+    // Simulate temporary IDB outage: save updated Doc1 (200), new Doc2 (200), and stale Doc3 (150) + stale DocDeleted (100) in localStorage
+    idbOnline = false;
+    const doc1Newer = { ...doc1, title: 'Doc 1 Updated Offline', updatedAt: 200 };
+    const doc2Fallback = { ...createDiagramDocument('Doc 2 Created Offline'), updatedAt: 200 };
+    const save1 = await saveDocumentToDB(doc1Newer);
+    const save2 = await saveDocumentToDB(doc2Fallback);
+    expect(save1.ok && save1.localSaved && !save1.idbSaved).toBe(true);
+    expect(save2.ok && save2.localSaved && !save2.idbSaved).toBe(true);
+
+    // Inject older Doc3 (150) & stale DocDeleted (100) into localStorage to verify neither overwrites/revives
+    const curLocal = JSON.parse(localMap.get('branchwise_saved_maps_v1'));
+    curLocal.push({ ...doc3, title: 'Doc 3 Stale Local', updatedAt: 150 });
+    curLocal.push(docDeleted);
+    localMap.set('branchwise_saved_maps_v1', JSON.stringify(curLocal));
+
+    // IndexedDB comes back online
+    idbOnline = true;
+    const recovered = await loadDocumentsFromDB([]);
+    const byId = new Map(recovered.map((d) => [d.id, d]));
+
+    expect(recovered).toHaveLength(3); // Doc1, Doc2, Doc3 (no duplicates, no DocDeleted)
+    expect(byId.get(doc1.id).title).toBe('Doc 1 Updated Offline');
+    expect(byId.get(doc2Fallback.id).title).toBe('Doc 2 Created Offline');
+    expect(byId.get(doc3.id).title).toBe('Doc 3'); // Newer IDB version preserved
+    expect(byId.has(docDeleted.id)).toBe(false); // Deleted doc not revived
+    expect(idbStore.has(doc2Fallback.id)).toBe(true); // Synced back to IDB
   });
 });
