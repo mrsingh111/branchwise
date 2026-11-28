@@ -11,10 +11,38 @@ import {
   Heart,
   X,
   FileText,
+  LayoutTemplate,
+  Code2,
+  PlusSquare,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { BRANCH_COLORS, TRENDING_TOPICS } from '../data/presets';
 
-function MiniLatticePreview({ branches }) {
+function MiniLatticePreview({ branches, doc }) {
+  if (doc?.docType === 'diagram') {
+    const active = doc.branches?.find((b) => b.id === doc.activeBranchId) || doc.branches?.[0];
+    const nodes = active?.nodes || [];
+    const edges = active?.edges || [];
+    const minX = nodes.length ? Math.min(...nodes.map((n) => n.x)) - 20 : 0;
+    const minY = nodes.length ? Math.min(...nodes.map((n) => n.y)) - 20 : 0;
+    const maxX = nodes.length ? Math.max(...nodes.map((n) => n.x + (n.w || 120))) + 20 : 200;
+    const maxY = nodes.length ? Math.max(...nodes.map((n) => n.y + (n.h || 60))) + 20 : 140;
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+    return (
+      <svg width="128" height="100" viewBox={`${minX} ${minY} ${Math.max(120, maxX - minX)} ${Math.max(80, maxY - minY)}`} style={{ flexShrink: 0 }}>
+        {edges.map((e, i) => {
+          const s = nodeMap.get(e.source);
+          const t = nodeMap.get(e.target);
+          if (!s || !t) return null;
+          return <line key={e.id || i} x1={s.x + s.w / 2} y1={s.y + s.h / 2} x2={t.x + t.w / 2} y2={t.y + t.h / 2} stroke="var(--muted)" strokeWidth="4" strokeOpacity="0.6" />;
+        })}
+        {nodes.map((n, i) => (
+          <rect key={n.id || i} x={n.x} y={n.y} width={n.w || 120} height={n.h || 60} rx="8" fill="var(--surface)" stroke="#6E8AE6" strokeWidth="5" />
+        ))}
+      </svg>
+    );
+  }
   const cx = 64;
   const cy = 50;
   const r = 34;
@@ -26,7 +54,7 @@ function MiniLatticePreview({ branches }) {
         const angle = -Math.PI / 2 + (i * 2 * Math.PI) / count;
         const x = cx + Math.cos(angle) * r;
         const y = cy + Math.sin(angle) * r;
-        const color = BRANCH_COLORS[b.colorIdx % BRANCH_COLORS.length].accent;
+        const color = BRANCH_COLORS[(b.colorIdx ?? i) % BRANCH_COLORS.length].accent;
         return (
           <g key={b.id || i}>
             <line
@@ -60,6 +88,10 @@ export default function HomeView({
   theme,
   onToggleTheme,
   onCreateMap,
+  onCreateDiagram,
+  onOpenTemplates,
+  onExportBackup,
+  onImportBackup,
   onOpenMap,
   onDeleteMap,
   onOpenQuiz,
@@ -238,6 +270,52 @@ export default function HomeView({
               />
             )}
           </form>
+
+          {/* Branchwise 2.0 Quick Studio Actions */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14, justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={() => onCreateDiagram && onCreateDiagram('Untitled Diagram')}
+              className="ml-btn"
+              style={styles.chatBtn}
+            >
+              <PlusSquare size={14} color="#6E8AE6" />
+              <span>New Diagram Studio</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenTemplates && onOpenTemplates()}
+              className="ml-btn"
+              style={styles.chatBtn}
+            >
+              <LayoutTemplate size={14} color="#52A87A" />
+              <span>Templates (12 Categories)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onExportBackup && onExportBackup()}
+              className="ml-btn"
+              style={styles.chatBtn}
+              title="Download JSON backup of all local documents"
+            >
+              <Download size={14} />
+              <span>Backup JSON</span>
+            </button>
+            <label className="ml-btn" style={{ ...styles.chatBtn, cursor: 'pointer' }} title="Restore documents from JSON backup">
+              <Upload size={14} />
+              <span>Restore JSON</span>
+              <input
+                type="file"
+                accept=".json"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f && onImportBackup) onImportBackup(f);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+          </div>
         </section>
 
         {/* Featured Active Lattice Card */}
@@ -259,15 +337,24 @@ export default function HomeView({
                 </div>
 
                 <div style={styles.branchPillsRow}>
-                  {featuredMap.branches.slice(0, 6).map((b, i) => {
-                    const color = BRANCH_COLORS[b.colorIdx % BRANCH_COLORS.length].accent;
-                    return (
+                  {featuredMap.docType === 'diagram' ? (
+                    featuredMap.branches.slice(0, 6).map((b, i) => (
                       <span key={b.id || i} style={styles.branchChip}>
-                        <span style={{ width: 6, height: 6, borderRadius: 999, background: color }} />
-                        <span>{b.label}</span>
+                        <span style={{ width: 6, height: 6, borderRadius: 999, background: '#6E8AE6' }} />
+                        <span>branch: {b.name} ({(b.nodes || []).length} nodes)</span>
                       </span>
-                    );
-                  })}
+                    ))
+                  ) : (
+                    featuredMap.branches.slice(0, 6).map((b, i) => {
+                      const color = BRANCH_COLORS[(b.colorIdx ?? i) % BRANCH_COLORS.length].accent;
+                      return (
+                        <span key={b.id || i} style={styles.branchChip}>
+                          <span style={{ width: 6, height: 6, borderRadius: 999, background: color }} />
+                          <span>{b.label}</span>
+                        </span>
+                      );
+                    })
+                  )}
                 </div>
 
                 <div style={styles.featuredFooter}>
@@ -280,29 +367,33 @@ export default function HomeView({
                     className="ml-btn"
                     style={styles.openCanvasBtn}
                   >
-                    <span>Open Canvas</span>
+                    <span>{featuredMap.docType === 'diagram' ? 'Open Studio' : 'Open Canvas'}</span>
                     <ArrowUpRight size={14} />
                   </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenQuiz(featuredMap);
-                    }}
-                    className="ml-btn"
-                    style={styles.quizOutlineBtn}
-                  >
-                    <HelpCircle size={13} />
-                    <span>Retention Quiz</span>
-                  </button>
+                  {featuredMap.docType !== 'diagram' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenQuiz(featuredMap);
+                      }}
+                      className="ml-btn"
+                      style={styles.quizOutlineBtn}
+                    >
+                      <HelpCircle size={13} />
+                      <span>Retention Quiz</span>
+                    </button>
+                  )}
                   <span className="mono" style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 'auto' }}>
-                    {(featuredMap.exploredBranchIds || []).length}/{featuredMap.branches.length} explored
+                    {featuredMap.docType === 'diagram'
+                      ? `${featuredMap.branches.length} branch${featuredMap.branches.length > 1 ? 'es' : ''}`
+                      : `${(featuredMap.exploredBranchIds || []).length}/${featuredMap.branches.length} explored`}
                   </span>
                 </div>
               </div>
 
               <div style={styles.previewBox}>
-                <MiniLatticePreview branches={featuredMap.branches} />
+                <MiniLatticePreview branches={featuredMap.branches} doc={featuredMap} />
               </div>
             </div>
           </section>
@@ -337,20 +428,22 @@ export default function HomeView({
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={styles.rowTitle}>{m.title}</div>
                         <div className="mono" style={styles.rowMeta}>
-                          {m.createdAt} · {explored}/{m.branches.length}
+                          {m.createdAt} · {m.docType === 'diagram' ? `Studio · ${m.branches.length} br` : `${explored}/${m.branches.length}`}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenQuiz(m);
-                        }}
-                        className="ml-btn"
-                        style={styles.rowActionBtn}
-                      >
-                        Quiz
-                      </button>
+                      {m.docType !== 'diagram' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenQuiz(m);
+                          }}
+                          className="ml-btn"
+                          style={styles.rowActionBtn}
+                        >
+                          Quiz
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
