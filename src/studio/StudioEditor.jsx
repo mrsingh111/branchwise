@@ -610,24 +610,31 @@ export default function StudioEditor({
         const aCx = rawX + anchorNode.w / 2;
         const aCy = rawY + anchorNode.h / 2;
 
-        // Smart alignment guides against non-moving nodes
-        for (const other of visibleNodes) {
-          if (act.origPositions.has(other.id)) continue;
-          const oCx = other.x + other.w / 2;
-          const oCy = other.y + other.h / 2;
-          if (Math.abs(aCx - oCx) < 7) {
-            adjDx += oCx - aCx;
-            guideX = oCx;
-          } else if (Math.abs(rawX - other.x) < 7) {
-            adjDx += other.x - rawX;
-            guideX = other.x;
-          }
-          if (Math.abs(aCy - oCy) < 7) {
-            adjDy += oCy - aCy;
-            guideY = oCy;
-          } else if (Math.abs(rawY - other.y) < 7) {
-            adjDy += other.y - rawY;
-            guideY = other.y;
+        // Smart alignment guides against non-moving nodes (skip full scan on >200 nodes for 60fps drag)
+        if (visibleNodes.length <= 200) {
+          for (const other of visibleNodes) {
+            if (act.origPositions.has(other.id)) continue;
+            const oCx = other.x + other.w / 2;
+            const oCy = other.y + other.h / 2;
+            if (guideX === null) {
+              if (Math.abs(aCx - oCx) < 7) {
+                adjDx += oCx - aCx;
+                guideX = oCx;
+              } else if (Math.abs(rawX - other.x) < 7) {
+                adjDx += other.x - rawX;
+                guideX = other.x;
+              }
+            }
+            if (guideY === null) {
+              if (Math.abs(aCy - oCy) < 7) {
+                adjDy += oCy - aCy;
+                guideY = oCy;
+              } else if (Math.abs(rawY - other.y) < 7) {
+                adjDy += other.y - rawY;
+                guideY = other.y;
+              }
+            }
+            if (guideX !== null && guideY !== null) break;
           }
         }
       }
@@ -798,13 +805,33 @@ export default function StudioEditor({
         zoomToBounds(cn);
       } else if (ext === 'json') {
         const parsed = JSON.parse(text);
-        if (parsed.nodes && parsed.edges) {
-          commitGraph(parsed.nodes, parsed.edges);
-          zoomToBounds(parsed.nodes);
-        } else if (parsed.branches?.[0]?.nodes) {
-          commitGraph(parsed.branches[0].nodes, parsed.branches[0].edges || []);
-          zoomToBounds(parsed.branches[0].nodes);
+        const rawNodes = Array.isArray(parsed?.nodes)
+          ? parsed.nodes
+          : Array.isArray(parsed?.branches?.[0]?.nodes)
+          ? parsed.branches[0].nodes
+          : null;
+        const rawEdges = Array.isArray(parsed?.edges)
+          ? parsed.edges
+          : Array.isArray(parsed?.branches?.[0]?.edges)
+          ? parsed.branches[0].edges
+          : [];
+        if (!rawNodes) {
+          throw new Error('JSON file must contain a "nodes" array or a Branchwise "branches" array.');
         }
+        const safeNodes = rawNodes.map((n, idx) => ({
+          ...n,
+          id: String(n?.id || makeId(`imp_${idx}`)),
+          label: String(n?.label ?? 'Node'),
+          shape: String(n?.shape || 'rect'),
+          x: Number.isFinite(Number(n?.x)) ? Number(n.x) : 100 + (idx % 6) * 190,
+          y: Number.isFinite(Number(n?.y)) ? Number(n.y) : 100 + Math.floor(idx / 6) * 110,
+          w: Math.max(40, Number(n?.w) || 160),
+          h: Math.max(30, Number(n?.h) || 64),
+        }));
+        const nodeIds = new Set(safeNodes.map((n) => n.id));
+        const safeEdges = rawEdges.filter((ed) => ed && nodeIds.has(String(ed.source)) && nodeIds.has(String(ed.target)));
+        commitGraph(safeNodes, safeEdges);
+        zoomToBounds(safeNodes);
       } else {
         setMermaidCode(text);
         setSplitMermaid(true);
@@ -1414,18 +1441,22 @@ export default function StudioEditor({
                     </div>
                   )}
 
-                  {node.metadata?.link && (
-                    <a
-                      href={node.metadata.link}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      style={styles.linkBadge}
-                      title={node.metadata.link}
-                    >
-                      <ExternalLink size={10} />
-                    </a>
-                  )}
+                  {(() => {
+                    const rawLink = String(node.metadata?.link || '').trim();
+                    const safeLink = /^(https?:\/\/|mailto:)/i.test(rawLink) ? rawLink : '';
+                    return safeLink ? (
+                      <a
+                        href={safeLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        style={styles.linkBadge}
+                        title={safeLink}
+                      >
+                        <ExternalLink size={10} />
+                      </a>
+                    ) : null;
+                  })()}
 
                   {/* Connection Ports */}
                   {isSel &&

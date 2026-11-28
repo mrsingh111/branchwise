@@ -63,11 +63,6 @@ export default function App() {
 
   useEffect(() => {
     setSaveStatus('saving');
-    try {
-      localStorage.setItem(MAPS_KEY, JSON.stringify(maps));
-    } catch {
-      // ignore localStorage quota overflow for large diagrams
-    }
     const timer = setTimeout(() => {
       saveAllDocumentsToDB(maps).then(() => setSaveStatus('saved'));
     }, 180);

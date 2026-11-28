@@ -407,7 +407,7 @@ function parseSequence(lines) {
       ensureParticipant(partMatch[2], partMatch[3] || partMatch[2], partMatch[1].toLowerCase() === 'actor' ? 'circle' : 'rect');
       return;
     }
-    const msgMatch = line.match(/^([a-zA-Z0-9_-]+)\s*(-->>|->>|-->|->)\s*([a-zA-Z0-9_-]+)\s*:\s*(.+)$/);
+    const msgMatch = line.match(/^([a-zA-Z0-9_-]+?)\s*(-->>|->>|-->|->)\s*([a-zA-Z0-9_-]+?)\s*:\s*(.+)$/);
     if (msgMatch) {
       const from = ensureParticipant(msgMatch[1]);
       const to = ensureParticipant(msgMatch[3]);

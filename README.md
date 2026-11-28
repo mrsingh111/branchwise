@@ -48,11 +48,18 @@ npm run dev
 
 Open `http://localhost:5173/` in your browser.
 
-### Production Build & Deploy
+### Production Build, Testing & Deployment
 
 ```bash
-npm run build
+npm test       # Run Vitest automated test suite
+npm run build  # Build production bundle into dist/
 npm run preview
+```
+
+To deploy `dist/` to GitHub Pages:
+
+```bash
+npm run build && npx gh-pages -d dist
 ```
 
 ---

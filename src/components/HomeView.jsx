@@ -454,7 +454,9 @@ export default function HomeView({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDeleteMap(m.id);
+                          if (window.confirm(`Delete "${m.title}"? This action cannot be undone.`)) {
+                            onDeleteMap(m.id);
+                          }
                         }}
                         style={styles.trashBtn}
                         title="Delete"
