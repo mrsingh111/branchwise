@@ -1,6 +1,6 @@
 // True Vector SVG, High-DPI PNG, PDF Print-Sheet, and JSON/Mermaid Export Engine
 
-import { buildEdgePath } from './shapeCatalog';
+import { buildEdgePath } from './shapeCatalog.js';
 
 function escXml(str) {
   return String(str || '')

@@ -264,10 +264,11 @@ function parseFlowchart(lines) {
   const nodeMap = new Map();
   const edges = [];
   const errors = [];
+  const warnings = [];
   const containers = [];
   let activeSubgraph = null;
 
-  const upsertNode = (tok) => {
+  const upsertNode = (tok, lineNum) => {
     if (!tok) return null;
     const existing = nodeMap.get(tok.id);
     if (!existing) {
@@ -278,6 +279,12 @@ function parseFlowchart(lines) {
       return created;
     }
     if (tok.explicit) {
+      if (existing.label !== tok.label && existing.label !== tok.id) {
+        warnings.push({
+          line: lineNum,
+          message: `Duplicate node ID "${tok.id}" redefined ("${existing.label}" -> "${tok.label}").`,
+        });
+      }
       const sz = defaultSizeForShape(tok.shape, tok.label);
       existing.label = tok.label;
       existing.shape = tok.shape;
@@ -295,7 +302,11 @@ function parseFlowchart(lines) {
   lines.slice(1).forEach((rawLine, i) => {
     const lineNum = i + 2;
     const line = rawLine.trim();
-    if (!line || line.startsWith('%%') || line.startsWith('classDef') || line.startsWith('style')) return;
+    if (!line || line.startsWith('%%')) return;
+    if (/^(classDef|style|class)\b/i.test(line)) {
+      warnings.push({ line: lineNum, message: `Mermaid styling directive "${line}" is not applied visually.` });
+      return;
+    }
 
     const subMatch = line.match(/^subgraph\s+(.+)$/i);
     if (subMatch) {
@@ -338,8 +349,8 @@ function parseFlowchart(lines) {
         errors.push({ line: lineNum, message: `Could not parse edge endpoints in "${line}"` });
         return;
       }
-      upsertNode(leftTok);
-      upsertNode(rightTok);
+      upsertNode(leftTok, lineNum);
+      upsertNode(rightTok, lineNum);
       const lineStyle = op.includes('-.') ? 'dashed' : op.includes('==') ? 'thick' : 'solid';
       const arrowEnd = op === '---' ? 'none' : 'arrow';
       edges.push(
@@ -355,14 +366,14 @@ function parseFlowchart(lines) {
 
     const singleTok = parseNodeToken(line);
     if (singleTok) {
-      upsertNode(singleTok);
+      upsertNode(singleTok, lineNum);
     } else {
       errors.push({ line: lineNum, message: `Unrecognized flowchart syntax: "${line}"` });
     }
   });
 
   const allNodes = autoLayoutNodes([...containers, ...Array.from(nodeMap.values())], edges, direction);
-  return { diagramType: 'flowchart', direction, nodes: allNodes, edges, errors };
+  return { diagramType: 'flowchart', direction, nodes: allNodes, edges, errors, warnings };
 }
 
 function parseSequence(lines) {
@@ -629,12 +640,13 @@ export function parseMermaid(code) {
   }
 
   const allErrors = [...validation.errors, ...(parsed.errors || [])];
+  const allWarnings = [...(validation.warnings || []), ...(parsed.warnings || [])];
   return {
     valid: allErrors.length === 0,
     diagramType: parsed.diagramType,
     direction: parsed.direction,
     errors: allErrors,
-    warnings: validation.warnings,
+    warnings: allWarnings,
     nodes: parsed.nodes,
     edges: parsed.edges,
   };

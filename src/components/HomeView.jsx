@@ -102,7 +102,13 @@ export default function HomeView({
   const [sourceOpen, setSourceOpen] = useState(false);
   const [sourceText, setSourceText] = useState('');
   const [supportOpen, setSupportOpen] = useState(false);
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 640 : false));
+
+  React.useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const isLive = Boolean(
     settings.apiKey?.trim() ||
@@ -175,6 +181,7 @@ export default function HomeView({
               ...styles.apiStatusBtn,
               height: isMobile ? 30 : 36,
               padding: isMobile ? '0 10px' : '0 14px',
+              whiteSpace: 'nowrap',
             }}
           >
             <span

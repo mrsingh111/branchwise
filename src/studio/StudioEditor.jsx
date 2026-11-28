@@ -739,8 +739,8 @@ export default function StudioEditor({
     }
   };
 
-  // Mermaid Split-Screen Validation & Sync
-  const mermaidValidation = useMemo(() => validateMermaid(mermaidCode), [mermaidCode]);
+  // Mermaid Split-Screen Validation & Sync (runs full parse so syntax/directive errors & warnings are never hidden)
+  const mermaidValidation = useMemo(() => parseMermaid(mermaidCode), [mermaidCode]);
 
   const handleApplyMermaidToCanvas = () => {
     const parsed = parseMermaid(mermaidCode);
@@ -1219,13 +1219,22 @@ export default function StudioEditor({
             <div style={styles.mermaidStatus}>
               {mermaidValidation.valid ? (
                 <span style={{ color: '#52A87A', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <CheckCircle2 size={13} /> Valid {mermaidValidation.diagramType}
+                  <CheckCircle2 size={13} /> Valid {mermaidValidation.diagramType} ({mermaidValidation.nodes.length} nodes)
                 </span>
               ) : (
                 <div style={{ color: '#E06C75' }}>
                   {mermaidValidation.errors.map((err, i) => (
                     <div key={i}>
                       Line {err.line}: {err.message}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {mermaidValidation.warnings?.length > 0 && (
+                <div style={{ color: '#D49B38', marginTop: 4 }}>
+                  {mermaidValidation.warnings.map((w, i) => (
+                    <div key={i}>
+                      Warning (Line {w.line}): {w.message}
                     </div>
                   ))}
                 </div>
@@ -1757,6 +1766,44 @@ export default function StudioEditor({
               ) : selectedEdge ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={styles.groupTitle}>Connector Properties</div>
+                  <div>
+                    <div style={styles.groupTitle}>Source Endpoint</div>
+                    <select
+                      value={selectedEdge.source}
+                      onChange={(e) =>
+                        commitGraph(
+                          nodes,
+                          edges.map((ed) => (ed.id === selectedEdge.id ? { ...ed, source: e.target.value } : ed))
+                        )
+                      }
+                      style={styles.propInput}
+                    >
+                      {nodes.map((n) => (
+                        <option key={n.id} value={n.id}>
+                          {n.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={styles.groupTitle}>Target Endpoint</div>
+                    <select
+                      value={selectedEdge.target}
+                      onChange={(e) =>
+                        commitGraph(
+                          nodes,
+                          edges.map((ed) => (ed.id === selectedEdge.id ? { ...ed, target: e.target.value } : ed))
+                        )
+                      }
+                      style={styles.propInput}
+                    >
+                      {nodes.map((n) => (
+                        <option key={n.id} value={n.id}>
+                          {n.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <div style={styles.groupTitle}>Label</div>
                     <input

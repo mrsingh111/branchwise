@@ -1,6 +1,6 @@
 # Branchwise
 
-An open-source, bring-your-own-key (BYOK) **visual AI thinking workspace** for turning any topic or pasted source into an interactive 3-level knowledge tree, exploring ideas in chat, and testing retention with quizzes.
+A local-first, developer-focused **diagramming workspace** combining visual editing, Mermaid diagram-as-code, local version branching, and an integrated **AI mind-mapping module** (BYOK).
 
 Made freely for everyone by **[Sewak Singh](https://github.com/mrsingh111)** · **[Try Live App →](https://mrsingh111.github.io/branchwise/)**
 
@@ -9,59 +9,35 @@ Made freely for everyone by **[Sewak Singh](https://github.com/mrsingh111)** · 
 
 ---
 
-## Screenshots & How It Works
+## Features
 
-### 1. Editorial Workspace & Active Lattice
-Type any topic or question, pick from curated starters, or jump back into your active lattice with a live mini-graph preview.
+### Pro Diagram Studio
+- **Infinite Pan & Zoom Canvas:** Smooth pan (`Space + Drag` or Pan tool), wheel zoom, Zoom to Fit, Zoom to Selection, toggleable grid, snap-to-grid, smart alignment guide lines, and an interactive bottom-right minimap.
+- **Technical Shape Libraries:** Flowchart (`Process`, `Rounded Step`, `Decision`, `Start / End`, `Circle`, `Document`, `Sticky Note`, `Text Block`, `Container`), Architecture & Cloud (`Service`, `API Endpoint`, `Database`, `Message Queue`, `Cloud`), Networking (`Server`, `Firewall`, `Switch / Router`), and UML/DB (`UML Class`, `ER Table`).
+- **Flexible Connectors:** Drag from any shape's 4 connection ports, edit labels inline or in the inspector, switch routing (`Orthogonal`, `Straight`, `Curved`), line styles (`Solid`, `Dashed`, `Thick`), arrowheads, and reassign Source/Target endpoints.
+- **Productivity & Precision:** Marquee selection, `Shift+Click` multi-select, single/multi-object resize, Group/Ungroup (`Ctrl+G` / `Ctrl+Shift+G`), Duplicate (`Ctrl+D`), Copy/Paste (`Ctrl+C` / `Ctrl+V`), Undo/Redo (`Ctrl+Z` / `Ctrl+Y`), Lock/Unlock, Layer visibility & lock controls, Align & Distribute tools, Find & Replace labels, Structural Validation, and Hierarchical/Grid auto-layout.
+- **12-Category Template Gallery:** Editable built-in templates across Flowcharts, Software Architecture, System Design, UML, ER Diagrams, Sequence Diagrams, Network Diagrams, Business Processes, Mind Maps, Project Workflows, API Architecture, and Cloud Infrastructure, with category filtering, search, SVG previews, and recently used tracking.
+- **Local Branching & Version History:** Create independent local branches (`main`, `feature-v2`, etc.), switch/rename branches, save named snapshots + periodic auto-snapshots, restore prior snapshots (with safety autosave), and compare two snapshots side-by-side (added/removed/modified nodes and connectors).
 
-![MindLattice Home Workspace](docs/screenshots/home-workspace.png)
+### Integrated AI Mind-Mapping Module (BYOK)
+- **3-Level Interactive Knowledge Maps:** Radial, Tree, and Org layouts with automatic overlap resolution, inline editing, Recall blur mode, Mastery tracking, Cross-Node Synthesis, Map-Aware Q&A, Retention Quizzes, and Reasoning Chat.
+- **Bring Your Own Key (11 Providers + Demo Mode):** Supports OpenRouter, Groq, OpenAI, OpenCode Zen, DeepSeek, Together AI, Mistral, xAI Grok, Google Gemini, Ollama, and LM Studio, plus offline Demo mode.
 
-### 2. Interactive 3-Level Mind Map (Dark & Light)
-Click any branch to expand its sub-nodes and on-canvas explanation callouts, use **Go Deeper with AI**, or query the lattice directly.
+---
 
-![MindLattice 3-Level Mind Map](docs/screenshots/mindmap-dark.png)
+## Screenshots
 
-### 3. Mobile-Ready Canvas & Bring Your Own AI Key
-Works cleanly on phone screens (`390×844`) and supports 11 developer AI providers (including free-tier **OpenRouter** and **Groq**).
+| Home Workspace & Active Lattice | 3-Level Mind Map (Dark Mode) |
+| :---: | :---: |
+| ![Home Workspace](docs/screenshots/home-workspace.png) | ![Mind Map](docs/screenshots/mindmap-dark.png) |
 
 | Mobile View (`390×844`) | AI API Configuration |
 | :---: | :---: |
 | ![Mobile Canvas](docs/screenshots/mobile-canvas.png) | ![AI API Configuration](docs/screenshots/api-config.png) |
 
-## Features
+---
 
-- **Source-Grounded Mapping (Paste Notes / Code / Articles):** Paste raw lecture notes, documentation, code, or articles to extract a structured 3-level lattice directly from your material.
-- **Spatial Active Recall & Mastery:** Toggle **Recall** mode to blur sub-nodes and callouts for active self-testing on the canvas, click to reveal, and track **Mastered / Review** progress.
-- **Cross-Node AI Synthesis:** Click **Link** to connect any two nodes across different branches — AI draws a dashed synthesis arc and explains how they reinforce, contradict, or depend on each other.
-- **3-Level Interactive Mind Maps:** Central topic → color-coded branch cards → sub-node pills → on-canvas explanation callouts, with automatic collision-free spacing.
-- **Go Deeper with AI:** Expand any branch or sub-node dynamically with new AI-generated child nodes.
-- **Map-Aware Q&A:** Query any lattice — answers point back to existing nodes and let you add new suggested nodes with one click.
-- **Reasoning Chat:** Think through messy ideas conversationally and convert any thread into a visual lattice.
-- **Retention Quiz:** Generate 3, 5, or 10 multiple-choice questions from any map.
-- **Dark & Light Themes:** Crisp blueprint-grid canvas in both dark and light modes, plus Markdown export.
-- **100% Client-Side & Private:** Maps, theme, and API keys are stored only in your browser's `localStorage`.
-
-## Supported AI Providers (BYOK)
-
-Click the API status pill in the top-right to configure any OpenAI-compatible endpoint:
-
-> **Free API Tip:** **OpenRouter** (free-tier models) and **Groq** both offer free limited API usage so you can try Branchwise without paying.
-
-- **OpenRouter** (Free tier available)
-- **Groq** (Free tier available)
-- **OpenAI**
-- **OpenCode Zen**
-- **DeepSeek**
-- **Together AI**
-- **Mistral**
-- **xAI Grok**
-- **Google Gemini** (OpenAI-compatible endpoint)
-- **Ollama** (Local, no key needed)
-- **LM Studio** (Local, no key needed)
-
-You can also use **Demo AI** mode without a key, or enable **"Require API key for AI thinking"** in Settings.
-
-## Quick Start
+## Installation
 
 ```bash
 git clone https://github.com/mrsingh111/branchwise.git
@@ -72,15 +48,69 @@ npm run dev
 
 Open `http://localhost:5173/` in your browser.
 
-### Production Build
+### Production Build & Deploy
 
 ```bash
 npm run build
+npm run preview
 ```
+
+---
+
+## Supported Mermaid Syntax
+
+Branchwise includes a split-screen Mermaid code editor (`Mermaid` toggle in Studio) with live line-numbered validation and `From Canvas` / `Apply to Canvas` sync for:
+
+- **Flowcharts (`flowchart TD|LR|TB|RL|BT`, `graph`):** Nodes (`[]`, `()`, `([])`, `{}` , `[()]`, `(())`, `[/ /]`), edges (`-->`, `---`, `-.->`, `==>`, labeled edges `-- text -->` and `-->|text|`), and `subgraph ... end` containers.
+- **Sequence Diagrams (`sequenceDiagram`):** `participant` / `actor` declarations (with `as` aliases) and `->>`, `-->>`, `->`, `-->` messages.
+- **Class Diagrams (`classDiagram`):** `class Name { ... }` member blocks, inline `Class : member` lines, and relationship connectors (`<|--`, `--|>`, `*--`, `o--`, `-->`, `..>`, `--`).
+- **State Diagrams (`stateDiagram-v2` / `stateDiagram`):** `[*]` start/end states, `state "Label" as id` aliases, and `A --> B : event` transitions.
+- **Entity Relationship Diagrams (`erDiagram`):** `ENTITY { ... }` column blocks and cardinality relationships (`||--o{`, etc.).
+- **Mind Maps (`mindmap`):** Parsed on the Home page via **Paste Source** into 3-level knowledge maps.
+
+Unsupported headers (e.g., `gantt`, `pie`) and unparsed directives (e.g., `classDef`, `style`, `click`, `linkStyle`) report explicit line-numbered errors or warnings rather than failing silently.
+
+---
+
+## Import & Export Formats
+
+- **Import:** Mermaid (`.mmd`, `.mermaid`, `.txt`), CSV edge-lists/node-tables (`.csv`), Branchwise JSON (`.json`), and full workspace JSON backups (`Restore JSON`).
+- **Export:**
+  - **SVG:** True vector export preserving dimensions, shapes, colors, connectors, and labels.
+  - **PNG:** Rasterized from vector SVG with configurable scale (`1x`, `2x`, `3x`) and optional transparent background.
+  - **PDF:** Vector print-sheet export via browser print dialog.
+  - **JSON & Mermaid (`.mmd`):** Document JSON, workspace backup JSON, and Mermaid source export.
+
+---
+
+## Data Storage & Privacy
+
+- **100% Client-Side:** No backend server or account is required.
+- **IndexedDB (`branchwise_db`) + `localStorage` Fallback:** Studio diagrams, branches, snapshots, and mind maps are persisted locally in IndexedDB with automatic migration from legacy `localStorage` data.
+- **API Keys:** Optional BYOK AI credentials are stored solely in your browser's `localStorage` and sent only to the provider endpoint you configure.
+
+---
+
+## Current Limitations
+
+- **Local-Only Branching:** Branches are independent local alternatives; collaborative Git-style 3-way conflict merging and cloud sync are not implemented.
+- **Mermaid Subset:** Advanced Mermaid features (`gantt`, `pie`, `gitGraph`, custom `classDef` styling, nested subgraphs) are not rendered visually and surface validation errors/warnings instead.
+- **PDF Export:** Uses the browser's print-to-PDF sheet (`window.print()`), which requires popups to be enabled.
+
+---
+
+## Roadmap
+
+- Direct on-canvas draggable connector endpoint handles (in addition to inspector endpoint selectors)
+- Multi-page / tabbed diagrams within a single document
+- Additional Mermaid diagram types (`gitGraph`, `journey`) and `classDef` color mapping
+- Optional PWA service worker for full offline installability
+
+---
 
 ## Support
 
-If Branchwise helps you learn or think faster, consider supporting my work:
+If Branchwise helps you design or learn faster, consider supporting the project:
 
 👉 **[buymeacoffee.com/sewak_singh](https://buymeacoffee.com/sewak_singh)**
 
