@@ -212,7 +212,80 @@ function buildDemoMindMap(topic, sourceText = '') {
   };
 }
 
+export function parseMermaidToMap(rawText, fallbackTitle = 'Mermaid Diagram') {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\t/g, '  '))
+    .filter((l) => l.trim() && !l.trim().startsWith('%%'));
+  if (!lines.length) return null;
+
+  const first = lines[0].trim().toLowerCase();
+  if (first.startsWith('mindmap')) {
+    const body = lines.slice(1);
+    let title = fallbackTitle;
+    const branches = [];
+    let currentBranch = null;
+    let baseIndent = null;
+
+    for (const line of body) {
+      const indent = line.search(/\S/);
+      const clean = line
+        .trim()
+        .replace(/^(root)?\(\((.+?)\)\)$/, '$2')
+        .replace(/^\[(.+?)\]$/, '$1')
+        .replace(/^\((.+?)\)$/, '$1')
+        .trim();
+      if (!clean) continue;
+
+      if (baseIndent === null) {
+        baseIndent = indent;
+        title = clean;
+        continue;
+      }
+      if (indent <= baseIndent + 2) {
+        currentBranch = {
+          id: `b${branches.length + 1}`,
+          label: clean,
+          colorIdx: branches.length % 6,
+          shape: 'card',
+          summary: '',
+          children: [],
+        };
+        branches.push(currentBranch);
+      } else if (currentBranch) {
+        currentBranch.children.push({
+          id: `${currentBranch.id}-${currentBranch.children.length + 1}`,
+          label: clean,
+          shape: 'card',
+          summary: '',
+        });
+      }
+    }
+
+    if (branches.length > 0) {
+      return {
+        id: uid('map'),
+        title,
+        createdAt: 'today',
+        isDemo: false,
+        fromSource: true,
+        exploredBranchIds: [],
+        masteredNodeIds: [],
+        reviewNodeIds: [],
+        crossLinks: [],
+        branches,
+      };
+    }
+  }
+  return null;
+}
+
 export async function generateMindMap(topic, settings, sourceText = '') {
+  if (sourceText.trim().toLowerCase().startsWith('mindmap')) {
+    const parsedMermaid = parseMermaidToMap(sourceText, topic || 'Mermaid Map');
+    if (parsedMermaid) return parsedMermaid;
+  }
+
   if (assertApiOrDemo(settings) === 'demo') {
     await new Promise((r) => setTimeout(r, 650));
     return buildDemoMindMap(topic, sourceText);

@@ -30,6 +30,11 @@ import {
   Cog,
   GitFork,
   Square,
+  Play,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  FileCode2,
 } from 'lucide-react';
 import { BRANCH_COLORS } from '../data/presets';
 import { askAboutMap, editMapWithAI, expandNodeWithAI, synthesizeNodes } from '../services/aiProvider';
@@ -138,6 +143,9 @@ export default function MindMapView({
   const [undoStack, setUndoStack] = useState([]);
   const [barMode, setBarMode] = useState('ask'); // 'ask' | 'edit'
   const [editingNode, setEditingNode] = useState(null); // { id, text, isBranch, branchId }
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [copiedMermaid, setCopiedMermaid] = useState(false);
+  const [presentIdx, setPresentIdx] = useState(null); // null | 0..branches.length-1
 
   const commitMapUpdate = (nextMap) => {
     setUndoStack((prev) => [...prev.slice(-14), map]);
@@ -686,7 +694,7 @@ export default function MindMapView({
   const rootX = rootBaseX + rootOff.dx;
   const rootY = rootBaseY + rootOff.dy;
 
-  const exportSvgDiagram = () => {
+  const buildSvgString = () => {
     const pad = 120;
     let minX = rootX - 150, maxX = rootX + 150, minY = rootY - 60, maxY = rootY + 60;
     layout.forEach((b) => {
@@ -719,7 +727,11 @@ export default function MindMapView({
         ...b.childPositions.map((cp) => `<rect x="${cp.x + ox - 90}" y="${cp.y + oy - 18}" width="180" height="36" rx="6" fill="#161920" stroke="#334155" /><text x="${cp.x + ox}" y="${cp.y + oy + 4}" fill="#CBD5E1" font-family="Inter,sans-serif" font-size="12" text-anchor="middle">${esc(cp.label.slice(0, 24))}</text>`),
       ]),
     ].join('\n');
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="100%" height="100%" fill="#0F1115"/>${paths}${nodes}</svg>`;
+    return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="100%" height="100%" fill="#0F1115"/>${paths}${nodes}</svg>`, w, h };
+  };
+
+  const exportSvgDiagram = () => {
+    const { svg } = buildSvgString();
     const blob = new Blob([svg], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -727,6 +739,74 @@ export default function MindMapView({
     a.download = `${map.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.svg`;
     a.click();
     URL.revokeObjectURL(url);
+    setExportMenuOpen(false);
+  };
+
+  const exportPngDiagram = () => {
+    const { svg, w, h } = buildSvgString();
+    const img = new Image();
+    const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    img.onload = () => {
+      const scale = 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = w * scale;
+      canvas.height = h * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((pngBlob) => {
+        if (!pngBlob) return;
+        const pUrl = URL.createObjectURL(pngBlob);
+        const a = document.createElement('a');
+        a.href = pUrl;
+        a.download = `${map.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.png`;
+        a.click();
+        URL.revokeObjectURL(pUrl);
+      }, 'image/png');
+    };
+    img.src = url;
+    setExportMenuOpen(false);
+  };
+
+  const copyMermaid = async () => {
+    const lines = [
+      'mindmap',
+      `  root((${map.title.replace(/[()]/g, '')}))`,
+      ...map.branches.flatMap((b) => [
+        `    ${b.label.replace(/[()]/g, '')}`,
+        ...(b.children || []).map((c) => `      ${c.label.replace(/[()]/g, '')}`),
+      ]),
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(lines);
+      setCopiedMermaid(true);
+      setTimeout(() => setCopiedMermaid(false), 1800);
+    } catch {
+      const blob = new Blob([lines], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${map.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.mmd`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+    setExportMenuOpen(false);
+  };
+
+  const goToPresentSlide = (idx) => {
+    const clamped = Math.max(0, Math.min(map.branches.length - 1, idx));
+    setPresentIdx(clamped);
+    const item = layout[clamped];
+    if (item) {
+      setExpandedBranches((prev) => new Set(prev).add(item.branch.id));
+      markBranchExplored(item.branch.id);
+      setPan({
+        x: Math.round((CX - item.bx) * zoom * 0.72),
+        y: Math.round((CY - item.by) * zoom * 0.72),
+      });
+    }
   };
 
   const startNodeDrag = (e, id) => {
@@ -846,21 +926,44 @@ export default function MindMapView({
           <span>Quiz</span>
         </button>
 
-        <button
-          onClick={exportSvgDiagram}
-          style={{ ...styles.roundBtn, width: isMobile ? 32 : 38, height: isMobile ? 32 : 38 }}
-          title="Export SVG Diagram"
-        >
-          <ImageIcon size={isMobile ? 15 : 17} />
-        </button>
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setExportMenuOpen((o) => !o)}
+            style={{
+              ...styles.quizBtn,
+              height: isMobile ? 32 : 38,
+              padding: isMobile ? '0 10px' : '0 13px',
+              fontSize: isMobile ? 12 : 13.5,
+            }}
+            title="Export PNG, SVG, Markdown, or Mermaid"
+          >
+            <Download size={isMobile ? 14 : 16} />
+            {!isMobile && <span>{copiedMermaid ? 'Copied!' : 'Export'}</span>}
+          </button>
 
-        <button
-          onClick={exportMarkdown}
-          style={{ ...styles.roundBtn, width: isMobile ? 32 : 38, height: isMobile ? 32 : 38 }}
-          title="Export Markdown"
-        >
-          <Download size={isMobile ? 15 : 17} />
-        </button>
+          {exportMenuOpen && (
+            <div style={styles.exportDropdown}>
+              <button onClick={exportPngDiagram} style={styles.exportItem}>
+                <ImageIcon size={14} /> <span>Export PNG (2x)</span>
+              </button>
+              <button onClick={exportSvgDiagram} style={styles.exportItem}>
+                <FileCode2 size={14} /> <span>Export SVG</span>
+              </button>
+              <button
+                onClick={() => {
+                  exportMarkdown();
+                  setExportMenuOpen(false);
+                }}
+                style={styles.exportItem}
+              >
+                <Download size={14} /> <span>Export Markdown</span>
+              </button>
+              <button onClick={copyMermaid} style={styles.exportItem}>
+                <Copy size={14} /> <span>Copy Mermaid</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         <button
           onClick={onToggleTheme}
@@ -1498,6 +1601,42 @@ export default function MindMapView({
         </div>
       )}
 
+      {/* Presentation / Step-Through Card */}
+      {presentIdx !== null && map.branches[presentIdx] && (
+        <div style={styles.presentBar} className="no-print">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>
+              SLIDE {presentIdx + 1} / {map.branches.length}
+            </span>
+            <button onClick={() => setPresentIdx(null)} style={styles.tinyClose} title="Exit Presentation">
+              <X size={14} />
+            </button>
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+            {map.branches[presentIdx].label}
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--text-soft)', lineHeight: 1.45, marginBottom: 10 }}>
+            {map.branches[presentIdx].summary}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <button
+              onClick={() => goToPresentSlide(presentIdx - 1)}
+              disabled={presentIdx === 0}
+              style={{ ...styles.actionBtn, opacity: presentIdx === 0 ? 0.45 : 1 }}
+            >
+              <ChevronLeft size={14} /> Prev
+            </button>
+            <button
+              onClick={() => goToPresentSlide(presentIdx + 1)}
+              disabled={presentIdx >= map.branches.length - 1}
+              style={{ ...styles.actionBtn, opacity: presentIdx >= map.branches.length - 1 ? 0.45 : 1 }}
+            >
+              Next <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Bottom Controls + Ask About This Map */}
       <div style={styles.bottomDock} className="no-print">
         <div style={styles.toolbarRow}>
@@ -1560,6 +1699,23 @@ export default function MindMapView({
             >
               <LayoutGrid size={14} style={{ marginRight: 5 }} />
               {layoutMode === 'radial' ? 'Radial' : layoutMode === 'tree' ? 'Tree' : 'Org'}
+            </button>
+            <button
+              onClick={() => {
+                if (presentIdx !== null) setPresentIdx(null);
+                else goToPresentSlide(0);
+              }}
+              style={{
+                ...styles.toolBtn,
+                width: 'auto',
+                padding: '0 9px',
+                fontSize: 12,
+                color: presentIdx !== null ? '#52A87A' : 'var(--text-soft)',
+              }}
+              title="Step-through presentation mode"
+            >
+              <Play size={13} style={{ marginRight: 5 }} />
+              Present
             </button>
             <button
               onClick={() => {
@@ -1777,6 +1933,49 @@ const styles = {
     alignItems: 'center',
     gap: 6,
     cursor: 'pointer',
+  },
+  exportDropdown: {
+    position: 'absolute',
+    top: 44,
+    right: 0,
+    width: 175,
+    background: 'var(--surface)',
+    border: '1px solid var(--border-strong)',
+    borderRadius: 10,
+    padding: 5,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    boxShadow: '0 14px 36px var(--shadow)',
+    zIndex: 40,
+  },
+  exportItem: {
+    background: 'transparent',
+    border: 'none',
+    color: 'var(--text)',
+    borderRadius: 6,
+    padding: '8px 10px',
+    fontSize: 12.5,
+    fontWeight: 500,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    textAlign: 'left',
+    cursor: 'pointer',
+  },
+  presentBar: {
+    position: 'fixed',
+    bottom: 118,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 25,
+    width: 'min(440px, 92vw)',
+    background: 'var(--surface-glass)',
+    backdropFilter: 'blur(10px)',
+    border: '1px solid var(--border-strong)',
+    borderRadius: 12,
+    padding: 14,
+    boxShadow: '0 16px 40px var(--shadow)',
   },
   searchBar: {
     position: 'fixed',
