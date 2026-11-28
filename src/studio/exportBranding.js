@@ -62,10 +62,7 @@ export function formatMermaidWithBranding(mermaidSource, mode = 'standard') {
   const m = normalizeBrandingMode(mode);
   const base = String(mermaidSource || '').trimEnd();
   if (m === 'none') return base;
-  if (m === 'minimal') {
-    return `${base}\n%% ${BRAND_INFO.attribution}`;
-  }
-  return `${base}\n%% ${BRAND_INFO.attribution} — ${BRAND_INFO.website}`;
+  return `${base}\n%% ${BRAND_INFO.attribution}`;
 }
 
 export function formatJsonWithBranding(data, mode = 'standard') {
@@ -79,7 +76,6 @@ export function formatJsonWithBranding(data, mode = 'standard') {
     application: BRAND_INFO.product,
     version: BRAND_INFO.version,
     exportedAt: new Date().toISOString(),
-    ...(m === 'standard' ? { website: BRAND_INFO.website } : {}),
   };
   return cloned;
 }

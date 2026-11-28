@@ -66,13 +66,13 @@ describe('Export Branding across PNG, SVG, PDF, Mermaid, JSON, CSV', () => {
     const svgStd = generateDiagramSVG(sampleNodes, sampleEdges, { branding: 'standard' });
     expect(svgStd).toContain('<metadata>');
     expect(svgStd).toContain(BRAND_INFO.attribution);
-    expect(svgStd).toContain(BRAND_INFO.website);
+    expect(svgStd).not.toContain(BRAND_INFO.website);
     expect(svgStd).toContain('data-branchwise-footer="standard"');
 
     const svgMin = generateDiagramSVG(sampleNodes, sampleEdges, { branding: 'minimal' });
     expect(svgMin).toContain('<metadata>');
     expect(svgMin).toContain(BRAND_INFO.attribution);
-    expect(svgMin).not.toContain(`·  ${BRAND_INFO.website}`);
+    expect(svgMin).not.toContain(BRAND_INFO.website);
 
     const svgNone = generateDiagramSVG(sampleNodes, sampleEdges, { branding: 'none' });
     expect(svgNone).not.toContain('<metadata>');
@@ -97,7 +97,7 @@ describe('Export Branding across PNG, SVG, PDF, Mermaid, JSON, CSV', () => {
     const none = formatMermaidWithBranding(raw, 'none');
 
     expect(std).toContain(`%% ${BRAND_INFO.attribution}`);
-    expect(std).toContain(BRAND_INFO.website);
+    expect(std).not.toContain(BRAND_INFO.website);
     expect(min).toContain(`%% ${BRAND_INFO.attribution}`);
     expect(none).toBe(raw);
 
@@ -112,7 +112,7 @@ describe('Export Branding across PNG, SVG, PDF, Mermaid, JSON, CSV', () => {
     const jsonStd = formatJsonWithBranding(doc, 'standard');
     expect(jsonStd.exportMetadata.application).toBe(BRAND_INFO.product);
     expect(jsonStd.exportMetadata.version).toBe(BRAND_INFO.version);
-    expect(jsonStd.exportMetadata.website).toBe(BRAND_INFO.website);
+    expect(jsonStd.exportMetadata.website).toBeUndefined();
     expect(jsonStd.exportMetadata.exportedAt).toBeTruthy();
 
     const imported = validateAndNormalizeDiagramJson(JSON.stringify(jsonStd));

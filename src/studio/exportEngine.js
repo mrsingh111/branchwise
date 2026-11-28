@@ -165,7 +165,7 @@ export function generateDiagramSVG(nodes, edges, options = {}) {
   const metadataBlock =
     mode === 'none'
       ? ''
-      : `\n  <metadata>${escXml(`${BRAND_INFO.attribution} (${BRAND_INFO.website}) · ${BRAND_INFO.product} v${BRAND_INFO.version}`)}</metadata>`;
+      : `\n  <metadata>${escXml(`${BRAND_INFO.attribution} · ${BRAND_INFO.product} v${BRAND_INFO.version}`)}</metadata>`;
 
   const footerTopY = bounds.minY + bounds.contentHeight;
   const footerSvg =
