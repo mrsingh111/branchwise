@@ -305,7 +305,14 @@ export async function loadDocumentsFromDB(fallbackDocs = []) {
 
 export async function saveDocumentToDB(doc) {
   const normalized = normalizeDocument(doc);
-  if (!normalized) return { ok: false, error: 'Invalid document' };
+  if (!normalized) {
+    return { ok: false, idbSaved: false, localSaved: false, error: 'Invalid document' };
+  }
+
+  let idbSaved = false;
+  let localSaved = false;
+  const errors = [];
+
   try {
     const db = await openDatabase();
     await new Promise((resolve, reject) => {
@@ -315,26 +322,105 @@ export async function saveDocumentToDB(doc) {
       tx.onerror = () => reject(tx.error);
     });
     db.close();
-    return { ok: true };
+    idbSaved = true;
   } catch (err) {
-    return { ok: false, error: err?.message || 'IndexedDB write failed' };
+    errors.push(err?.message || 'IndexedDB write failed');
   }
+
+  if (!idbSaved) {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        let existing = [];
+        try {
+          const raw = localStorage.getItem(LEGACY_MAPS_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) existing = parsed;
+          }
+        } catch {
+          existing = [];
+        }
+        const idx = existing.findIndex((d) => d && d.id === normalized.id);
+        const nextList =
+          idx >= 0
+            ? existing.map((d, i) => (i === idx ? normalized : d))
+            : [normalized, ...existing];
+        localStorage.setItem(LEGACY_MAPS_KEY, JSON.stringify(nextList));
+        localSaved = true;
+      } else {
+        errors.push('localStorage unavailable');
+      }
+    } catch (err) {
+      errors.push(err?.message || 'localStorage write failed');
+    }
+  }
+
+  const ok = idbSaved || localSaved;
+  return {
+    ok,
+    idbSaved,
+    localSaved,
+    error: ok ? null : errors.join('; ') || 'No persistent storage available',
+  };
 }
 
 export async function deleteDocumentFromDB(id) {
-  try {
-    const db = await openDatabase();
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(DOC_STORE, 'readwrite');
-      tx.objectStore(DOC_STORE).delete(id);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-    db.close();
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err?.message || 'IndexedDB delete failed' };
+  let idbDeleted = false;
+  let localDeleted = false;
+  const errors = [];
+  const hasIdb = typeof indexedDB !== 'undefined';
+
+  if (hasIdb) {
+    try {
+      const db = await openDatabase();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(DOC_STORE, 'readwrite');
+        tx.objectStore(DOC_STORE).delete(id);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+      idbDeleted = true;
+    } catch (err) {
+      errors.push(err?.message || 'IndexedDB delete failed');
+    }
   }
+
+  let docRemainsInLocal = false;
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(LEGACY_MAPS_KEY);
+      if (raw) {
+        let parsed;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          parsed = null;
+        }
+        if (Array.isArray(parsed)) {
+          const hadDoc = parsed.some((d) => d && d.id === id);
+          const filtered = parsed.filter((d) => d && d.id !== id);
+          if (hadDoc) {
+            docRemainsInLocal = true;
+            localStorage.setItem(LEGACY_MAPS_KEY, JSON.stringify(filtered));
+            docRemainsInLocal = false;
+          }
+        }
+      }
+      localDeleted = true;
+    } catch (err) {
+      errors.push(err?.message || 'localStorage delete failed');
+    }
+  }
+
+  // Never claim success if IndexedDB exists and failed, or if the doc remains in localStorage
+  const ok = !docRemainsInLocal && (hasIdb ? idbDeleted : localDeleted);
+  return {
+    ok,
+    idbDeleted,
+    localDeleted,
+    error: ok ? null : errors.join('; ') || 'Failed to delete document from persistent storage',
+  };
 }
 
 export async function saveAllDocumentsToDB(docs) {

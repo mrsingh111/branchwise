@@ -13,6 +13,8 @@ import {
   parseBackupJSON,
   loadDocumentsFromDB,
   saveAllDocumentsToDB,
+  saveDocumentToDB,
+  deleteDocumentFromDB,
 } from '../storage/db.js';
 
 describe('Document Schema, Branching, Snapshots & Storage Fallback', () => {
@@ -126,5 +128,87 @@ describe('Document Schema, Branching, Snapshots & Storage Fallback', () => {
     const failRes = await saveAllDocumentsToDB([doc]);
     expect(failRes.ok).toBe(false);
     expect(failRes.error).toContain('QuotaExceededError');
+  });
+
+  it('saveDocumentToDB falls back to localStorage preserving other docs, handles malformed data and dual failure', async () => {
+    const store = new Map();
+    const docA = createDiagramDocument('Doc A');
+    const docB = createDiagramDocument('Doc B');
+    store.set('branchwise_saved_maps_v1', JSON.stringify([docA]));
+
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => store.set(k, String(v)),
+      },
+      configurable: true,
+    });
+
+    const resB = await saveDocumentToDB(docB);
+    expect(resB.ok).toBe(true);
+    expect(resB.idbSaved).toBe(false);
+    expect(resB.localSaved).toBe(true);
+
+    const storedAfterB = JSON.parse(store.get('branchwise_saved_maps_v1'));
+    expect(storedAfterB).toHaveLength(2);
+    expect(storedAfterB.some((d) => d.id === docA.id)).toBe(true);
+    expect(storedAfterB.some((d) => d.id === docB.id)).toBe(true);
+
+    // Malformed legacy data in localStorage should recover safely instead of crashing
+    store.set('branchwise_saved_maps_v1', '{corrupted-json');
+    const resRecover = await saveDocumentToDB(docA);
+    expect(resRecover.ok).toBe(true);
+    expect(JSON.parse(store.get('branchwise_saved_maps_v1'))).toHaveLength(1);
+
+    // Both IndexedDB unavailable and localStorage quota failure -> ok: false
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        getItem: () => null,
+        setItem: () => {
+          throw new Error('QuotaExceededError');
+        },
+      },
+      configurable: true,
+    });
+    const dualFail = await saveDocumentToDB(docA);
+    expect(dualFail.ok).toBe(false);
+    expect(dualFail.idbSaved).toBe(false);
+    expect(dualFail.localSaved).toBe(false);
+    expect(dualFail.error).toContain('QuotaExceededError');
+  });
+
+  it('deleteDocumentFromDB preserves other documents and reports failure if doc remains in storage', async () => {
+    const store = new Map();
+    const docA = createDiagramDocument('Keep A');
+    const docB = createDiagramDocument('Delete B');
+    store.set('branchwise_saved_maps_v1', JSON.stringify([docA, docB]));
+
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => store.set(k, String(v)),
+      },
+      configurable: true,
+    });
+
+    const delOk = await deleteDocumentFromDB(docB.id);
+    expect(delOk.ok).toBe(true);
+    const remaining = JSON.parse(store.get('branchwise_saved_maps_v1'));
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe(docA.id);
+
+    // If localStorage.setItem fails while docA is still in it, delete must return ok: false
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: () => {
+          throw new Error('StorageReadOnlyError');
+        },
+      },
+      configurable: true,
+    });
+    const delFail = await deleteDocumentFromDB(docA.id);
+    expect(delFail.ok).toBe(false);
+    expect(delFail.error).toContain('StorageReadOnlyError');
   });
 });
