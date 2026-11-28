@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { SAMPLE_MIND_MAP } from './data/presets';
 import { generateMindMap, loadSettings, saveSettings } from './services/aiProvider';
@@ -15,7 +15,6 @@ import {
   exportDocumentsBackupJSON,
   loadDocumentsFromDB,
   parseBackupJSON,
-  saveAllDocumentsToDB,
   saveDocumentToDB,
 } from './storage/db';
 import { downloadTextFile } from './studio/exportEngine';
@@ -47,29 +46,51 @@ export default function App() {
   const [settingsNotice, setSettingsNotice] = useState('');
   const [saveStatus, setSaveStatus] = useState('saved');
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  // Tracks the updateAt stamp last persisted for each document, so autosave only
+  // writes the documents that actually changed instead of rewriting the whole store.
+  const savedStampsRef = useRef(new Map());
 
-  // Hydrate from IndexedDB (with automatic localStorage migration) on mount
+  const stampOf = (doc) => doc?.updatedAt || 0;
+
+  // Hydrate from IndexedDB (with automatic localStorage migration) on mount.
+  // Autosave stays disabled until this resolves so the initial seed can never
+  // overwrite newer documents that exist only in IndexedDB.
   useEffect(() => {
     let mounted = true;
-    loadDocumentsFromDB([SAMPLE_MIND_MAP]).then((loaded) => {
-      if (mounted && loaded.length > 0) {
-        setMaps(loaded);
-      }
-    });
+    loadDocumentsFromDB([SAMPLE_MIND_MAP])
+      .then((loaded) => {
+        if (mounted && loaded.length > 0) {
+          setMaps(loaded);
+          loaded.forEach((doc) => savedStampsRef.current.set(doc.id, stampOf(doc)));
+        }
+      })
+      .finally(() => {
+        if (mounted) setHydrated(true);
+      });
     return () => {
       mounted = false;
     };
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return undefined;
     setSaveStatus('saving');
     const timer = setTimeout(() => {
-      saveAllDocumentsToDB(maps).then((res) => {
-        setSaveStatus(res?.ok ? 'saved' : 'error');
+      const pending = maps.filter((m) => savedStampsRef.current.get(m.id) !== stampOf(m));
+      if (pending.length === 0) {
+        setSaveStatus('saved');
+        return;
+      }
+      Promise.all(pending.map((doc) => saveDocumentToDB(doc))).then((results) => {
+        results.forEach((res, i) => {
+          if (res?.ok) savedStampsRef.current.set(pending[i].id, stampOf(pending[i]));
+        });
+        setSaveStatus(results.every((res) => res?.ok) ? 'saved' : 'error');
       });
-    }, 180);
+    }, 300);
     return () => clearTimeout(timer);
-  }, [maps]);
+  }, [maps, hydrated]);
 
   useEffect(() => {
     localStorage.setItem(THEME_KEY, theme);
@@ -84,8 +105,9 @@ export default function App() {
     setGeneratingTopic(topic || 'Source Notes');
     try {
       const newMap = await generateMindMap(topic, settings, sourceText);
-      setMaps((prev) => [newMap, ...prev]);
-      setActiveMapId(newMap.id);
+      const stampedMap = { ...newMap, updatedAt: Date.now() };
+      setMaps((prev) => [stampedMap, ...prev]);
+      setActiveMapId(stampedMap.id);
       setView('map');
     } catch (err) {
       setSettingsNotice(err.message);
@@ -100,8 +122,7 @@ export default function App() {
       prev.map((m) => {
         if (m.id !== (typeof updatedOrFn === 'function' ? activeMapId : updatedOrFn.id)) return m;
         const next = typeof updatedOrFn === 'function' ? updatedOrFn(m) : updatedOrFn;
-        saveDocumentToDB(next);
-        return next;
+        return { ...next, updatedAt: Date.now() };
       })
     );
   };
@@ -110,6 +131,7 @@ export default function App() {
     const newDoc = createDiagramDocument(title, initialData);
     setMaps((prev) => [newDoc, ...prev]);
     saveDocumentToDB(newDoc);
+    savedStampsRef.current.set(newDoc.id, stampOf(newDoc));
     setActiveMapId(newDoc.id);
     setView('studio');
   };

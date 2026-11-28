@@ -265,6 +265,25 @@ export default function StudioEditor({
     setRedoStack([]);
   }, [activeBranch?.id]);
 
+  // Persist pan/zoom back onto the active branch (debounced) so viewport state
+  // survives branch switches and reloads. The first render after a branch switch
+  // is skipped because viewport is being restored from that branch's saved value.
+  const persistedBranchIdRef = useRef(activeBranch?.id);
+  useEffect(() => {
+    if (persistedBranchIdRef.current !== activeBranch?.id) {
+      persistedBranchIdRef.current = activeBranch?.id;
+      return undefined;
+    }
+    const saved = activeBranch?.viewport;
+    if (saved && saved.x === viewport.x && saved.y === viewport.y && saved.zoom === viewport.zoom) {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      onUpdateDoc((prev) => updateActiveBranch(prev, { viewport }));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [viewport, activeBranch?.id, activeBranch?.viewport, onUpdateDoc]);
+
   // Periodic automatic snapshot every 90s if nodes exist
   useEffect(() => {
     const timer = setInterval(() => {
