@@ -1,9 +1,10 @@
 # Dependencies
 node_modules/
 
-# Build output
+# Build & test output
 dist/
 dist-ssr/
+coverage/
 
 # Environment & local files
 .env
