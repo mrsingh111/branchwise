@@ -226,15 +226,14 @@ Return ONLY valid JSON with this exact schema:
     {
       "label": "2-4 word branch title",
       "summary": "1-2 sentence clear explanation",
+      "shape": "card | process | decision | store",
       "children": [
-        { "label": "2-4 word sub-idea", "summary": "1-2 sentence explanation" },
-        { "label": "2-4 word sub-idea", "summary": "1-2 sentence explanation" },
-        { "label": "2-4 word sub-idea", "summary": "1-2 sentence explanation" }
+        { "label": "2-4 word sub-idea", "summary": "1-2 sentence explanation", "shape": "card | process | decision | store" }
       ]
     }
   ]
 }
-Create 6 distinct, logical branches with 3 children each.`;
+Create 6 distinct, logical branches with 3 children each. Use "card" for general concepts, or "process"/"decision"/"store" when mapping workflows, code, or system architecture.`;
 
   const userPrompt = sourceText.trim()
     ? `Extract a Branchwise knowledge map grounded strictly in this source material (title: "${topic || 'Source Notes'}"):\n\n${sourceText.slice(0, 12000)}`
@@ -254,10 +253,12 @@ Create 6 distinct, logical branches with 3 children each.`;
     id: `b${idx + 1}`,
     label: b.label || `Branch ${idx + 1}`,
     colorIdx: idx % 6,
+    shape: b.shape || 'card',
     summary: b.summary || '',
     children: (b.children || []).map((c, cIdx) => ({
       id: `b${idx + 1}-${cIdx + 1}`,
       label: c.label || `Idea ${cIdx + 1}`,
+      shape: c.shape || 'card',
       summary: c.summary || '',
     })),
   }));
@@ -313,6 +314,74 @@ Return ONLY valid JSON: { "insight": "1-2 sentence synthesis" }`;
     fromLabel: nodeA.label,
     toLabel: nodeB.label,
     insight: parsed.insight || `${nodeA.label} ↔ ${nodeB.label}`,
+  };
+}
+
+export async function editMapWithAI(map, instruction, settings) {
+  if (assertApiOrDemo(settings) === 'demo') {
+    await new Promise((r) => setTimeout(r, 450));
+    const lower = instruction.toLowerCase();
+    const cleanText = instruction.replace(/^(add|create|make)\s+(a\s+)?(branch|node|topic)?\s*(about|for|on)?\s*/i, '').trim();
+    if (lower.startsWith('remove ') || lower.startsWith('delete ')) {
+      const target = instruction.replace(/^(remove|delete)\s+/i, '').trim().toLowerCase();
+      return {
+        summary: `Removed matching item for "${target}".`,
+        operations: [{ type: 'deleteByLabel', label: target }],
+      };
+    }
+    const label = (cleanText || instruction).split(/\s+/).slice(0, 4).join(' ');
+    return {
+      summary: `Added new branch "${label}" to "${map.title}".`,
+      operations: [
+        {
+          type: 'addBranch',
+          label: label.slice(0, 32),
+          summary: `Added via Edit Map: ${instruction}`,
+          shape: lower.includes('db') || lower.includes('store') ? 'store' : lower.includes('decision') || lower.includes('if') ? 'decision' : lower.includes('step') || lower.includes('process') ? 'process' : 'card',
+          children: [
+            { label: 'Core mechanism', summary: `How ${label} operates in ${map.title}.` },
+            { label: 'Key trade-off', summary: `Main advantage and constraint of ${label}.` },
+          ],
+        },
+      ],
+    };
+  }
+
+  const mapContext = map.branches
+    .map(
+      (b) =>
+        `Branch [${b.id}] "${b.label}" (${b.shape || 'card'}): ${b.summary}\n` +
+        b.children.map((c) => `  - Node [${c.id}] "${c.label}" (${c.shape || 'card'}): ${c.summary}`).join('\n')
+    )
+    .join('\n');
+
+  const systemPrompt = `${settings.customSystemPrompt}
+You are editing an existing Branchwise diagram based on the user's command.
+Return ONLY valid JSON with this schema:
+{
+  "summary": "1 sentence describing what changed",
+  "operations": [
+    { "type": "addBranch", "label": "2-4 words", "summary": "1-2 sentences", "shape": "card|process|decision|store", "children": [{ "label": "2-4 words", "summary": "1 sentence" }] },
+    { "type": "addChild", "parentBranchId": "b1", "label": "2-4 words", "summary": "1 sentence", "shape": "card|process|decision|store" },
+    { "type": "renameNode", "nodeId": "b1-1", "label": "new label", "summary": "optional new summary" },
+    { "type": "deleteNode", "nodeId": "b1-1" }
+  ]
+}
+Include only the operations needed to fulfill the request.`;
+
+  const content = await callChatCompletion(
+    [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Current map "${map.title}":\n${mapContext}\n\nEdit command: ${instruction}` },
+    ],
+    settings,
+    true
+  );
+
+  const parsed = extractJson(content);
+  return {
+    summary: parsed.summary || 'Updated map.',
+    operations: Array.isArray(parsed.operations) ? parsed.operations : [],
   };
 }
 

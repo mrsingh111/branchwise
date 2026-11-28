@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   ArrowLeft,
   Search,
@@ -23,9 +23,16 @@ import {
   RotateCcw,
   LayoutGrid,
   Image as ImageIcon,
+  Undo2,
+  Pencil,
+  Trash2,
+  Database,
+  Cog,
+  GitFork,
+  Square,
 } from 'lucide-react';
 import { BRANCH_COLORS } from '../data/presets';
-import { askAboutMap, expandNodeWithAI, synthesizeNodes } from '../services/aiProvider';
+import { askAboutMap, editMapWithAI, expandNodeWithAI, synthesizeNodes } from '../services/aiProvider';
 
 const CANVAS_W = 3600;
 const CANVAS_H = 3000;
@@ -126,6 +133,23 @@ export default function MindMapView({
   const [layoutMode, setLayoutMode] = useState('radial'); // 'radial' | 'tree' | 'org'
   const [nodeOffsets, setNodeOffsets] = useState({});
   const nodeDragRef = useRef({ active: false, id: null, startX: 0, startY: 0, origDx: 0, origDy: 0, moved: false });
+
+  // Undo stack, inline editing, and Ask vs Edit mode
+  const [undoStack, setUndoStack] = useState([]);
+  const [barMode, setBarMode] = useState('ask'); // 'ask' | 'edit'
+  const [editingNode, setEditingNode] = useState(null); // { id, text, isBranch, branchId }
+
+  const commitMapUpdate = (nextMap) => {
+    setUndoStack((prev) => [...prev.slice(-14), map]);
+    onUpdateMap(nextMap);
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    setUndoStack((s) => s.slice(0, -1));
+    onUpdateMap(prev);
+  };
 
   const layout = useMemo(() => {
     const count = Math.max(1, map.branches.length);
@@ -367,6 +391,110 @@ export default function MindMapView({
     }
   };
 
+  const addNodeInline = (branchId, label = 'New idea') => {
+    const newId = `n-${Math.random().toString(36).slice(2, 7)}`;
+    const targetBranch = map.branches.find((b) => b.id === branchId) || map.branches[0];
+    if (!targetBranch) return;
+    const newChild = { id: newId, label, summary: 'Double-click or use Go Deeper to expand.', shape: 'card' };
+    const updated = {
+      ...map,
+      branches: map.branches.map((b) =>
+        b.id === targetBranch.id ? { ...b, children: [...(b.children || []), newChild] } : b
+      ),
+    };
+    commitMapUpdate(updated);
+    setExpandedBranches((prev) => new Set(prev).add(targetBranch.id));
+    setSelectedNode({ branch: targetBranch, node: newChild, isBranch: false });
+    setEditingNode({ id: newId, text: label, isBranch: false, branchId: targetBranch.id });
+  };
+
+  const deleteNodeById = (nodeId, isBranch) => {
+    if (isBranch) {
+      if (map.branches.length <= 1) return;
+      commitMapUpdate({
+        ...map,
+        branches: map.branches.filter((b) => b.id !== nodeId),
+      });
+    } else {
+      commitMapUpdate({
+        ...map,
+        branches: map.branches.map((b) => ({
+          ...b,
+          children: (b.children || []).filter((c) => c.id !== nodeId),
+        })),
+      });
+    }
+    setSelectedNode(null);
+  };
+
+  const saveInlineEdit = () => {
+    if (!editingNode) return;
+    const trimmed = editingNode.text.trim();
+    if (trimmed) {
+      if (editingNode.id === 'root') {
+        commitMapUpdate({ ...map, title: trimmed });
+      } else if (editingNode.isBranch) {
+        commitMapUpdate({
+          ...map,
+          branches: map.branches.map((b) => (b.id === editingNode.id ? { ...b, label: trimmed } : b)),
+        });
+      } else {
+        commitMapUpdate({
+          ...map,
+          branches: map.branches.map((b) => ({
+            ...b,
+            children: (b.children || []).map((c) => (c.id === editingNode.id ? { ...c, label: trimmed } : c)),
+          })),
+        });
+      }
+    }
+    setEditingNode(null);
+  };
+
+  const setNodeShape = (nodeId, isBranch, shape) => {
+    if (isBranch) {
+      commitMapUpdate({
+        ...map,
+        branches: map.branches.map((b) => (b.id === nodeId ? { ...b, shape } : b)),
+      });
+    } else {
+      commitMapUpdate({
+        ...map,
+        branches: map.branches.map((b) => ({
+          ...b,
+          children: (b.children || []).map((c) => (c.id === nodeId ? { ...c, shape } : c)),
+        })),
+      });
+    }
+    setSelectedNode((prev) => (prev ? { ...prev, node: { ...prev.node, shape } } : null));
+  };
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (editingNode) return;
+      const tag = e.target?.tagName || document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+      if (!selectedNode) return;
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        addNodeInline(selectedNode.branch.id, 'New sub-idea');
+      } else if (e.key === 'Enter' && !selectedNode.isBranch) {
+        e.preventDefault();
+        addNodeInline(selectedNode.branch.id, 'Sibling idea');
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        deleteNodeById(selectedNode.node.id, selectedNode.isBranch);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
+
   const handleAsk = async (e) => {
     e.preventDefault();
     const q = askInput.trim();
@@ -374,6 +502,79 @@ export default function MindMapView({
     setAskLoading(true);
     setAskInput('');
     try {
+      if (barMode === 'edit') {
+        const res = await editMapWithAI(map, q, settings);
+        let nextBranches = [...map.branches];
+        const newExpanded = new Set(expandedBranches);
+
+        (res.operations || []).forEach((op) => {
+          if (op.type === 'addBranch') {
+            const bid = `b-${Math.random().toString(36).slice(2, 6)}`;
+            nextBranches.push({
+              id: bid,
+              label: op.label || 'New branch',
+              colorIdx: nextBranches.length % 6,
+              shape: op.shape || 'card',
+              summary: op.summary || '',
+              children: (op.children || []).map((c, ci) => ({
+                id: `${bid}-${ci + 1}`,
+                label: c.label || 'Idea',
+                summary: c.summary || '',
+                shape: c.shape || 'card',
+              })),
+            });
+            newExpanded.add(bid);
+          } else if (op.type === 'addChild') {
+            const targetId = op.parentBranchId || nextBranches[0]?.id;
+            nextBranches = nextBranches.map((b) =>
+              b.id === targetId
+                ? {
+                    ...b,
+                    children: [
+                      ...(b.children || []),
+                      {
+                        id: `${b.id}-${Math.random().toString(36).slice(2, 6)}`,
+                        label: op.label || 'New idea',
+                        summary: op.summary || '',
+                        shape: op.shape || 'card',
+                      },
+                    ],
+                  }
+                : b
+            );
+            newExpanded.add(targetId);
+          } else if (op.type === 'renameNode') {
+            nextBranches = nextBranches.map((b) =>
+              b.id === op.nodeId
+                ? { ...b, label: op.label || b.label, summary: op.summary ?? b.summary }
+                : {
+                    ...b,
+                    children: (b.children || []).map((c) =>
+                      c.id === op.nodeId ? { ...c, label: op.label || c.label, summary: op.summary ?? c.summary } : c
+                    ),
+                  }
+            );
+          } else if (op.type === 'deleteNode') {
+            nextBranches = nextBranches
+              .filter((b) => b.id !== op.nodeId)
+              .map((b) => ({ ...b, children: (b.children || []).filter((c) => c.id !== op.nodeId) }));
+          } else if (op.type === 'deleteByLabel') {
+            const needle = (op.label || '').toLowerCase();
+            nextBranches = nextBranches
+              .filter((b) => !b.label.toLowerCase().includes(needle))
+              .map((b) => ({
+                ...b,
+                children: (b.children || []).filter((c) => !c.label.toLowerCase().includes(needle)),
+              }));
+          }
+        });
+
+        commitMapUpdate({ ...map, branches: nextBranches });
+        setExpandedBranches(newExpanded);
+        setLatestReply({ question: `Edit: ${q}`, answer: res.summary, referencedNodeIds: [], suggestedNodes: [] });
+        return;
+      }
+
       const res = await askAboutMap(map, q, askHistory, settings);
       setAskHistory((prev) => [
         ...prev,
@@ -622,6 +823,16 @@ export default function MindMapView({
           )}
         </div>
 
+        {undoStack.length > 0 && (
+          <button
+            onClick={handleUndo}
+            style={{ ...styles.roundBtn, width: isMobile ? 32 : 38, height: isMobile ? 32 : 38 }}
+            title="Undo (Ctrl+Z)"
+          >
+            <Undo2 size={isMobile ? 15 : 17} />
+          </button>
+        )}
+
         <button
           onClick={onOpenQuiz}
           style={{
@@ -851,6 +1062,10 @@ export default function MindMapView({
         <div
           data-node
           onPointerDown={(e) => startNodeDrag(e, 'root')}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            setEditingNode({ id: 'root', text: map.title, isBranch: false, branchId: null });
+          }}
           onClick={() => {
             if (!nodeDragRef.current.moved) setSelectedNode(null);
           }}
@@ -860,7 +1075,22 @@ export default function MindMapView({
             top: rootY,
           }}
         >
-          {map.title}
+          {editingNode?.id === 'root' ? (
+            <input
+              autoFocus
+              value={editingNode.text}
+              onChange={(e) => setEditingNode({ ...editingNode, text: e.target.value })}
+              onBlur={saveInlineEdit}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') saveInlineEdit();
+                if (e.key === 'Escape') setEditingNode(null);
+              }}
+              style={styles.inlineInput}
+            />
+          ) : (
+            map.title
+          )}
         </div>
 
         {/* Level 1 Branch Cards, Level 2 Sub-Branch Pills, Level 3 Leaf Explanations */}
@@ -869,6 +1099,7 @@ export default function MindMapView({
             searchLower && branch.label.toLowerCase().includes(searchLower);
           const isHighlighted = highlightedIds.has(branch.id) || isMatched;
           const isExplored = (map.exploredBranchIds || []).includes(branch.id);
+          const bShape = branch.shape || 'card';
 
           return (
             <React.Fragment key={branch.id}>
@@ -877,6 +1108,10 @@ export default function MindMapView({
                 data-node
                 className="ml-node"
                 onPointerDown={(e) => startNodeDrag(e, branch.id)}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setEditingNode({ id: branch.id, text: branch.label, isBranch: true, branchId: branch.id });
+                }}
                 onClick={() => {
                   if (nodeDragRef.current.moved) return;
                   if (linkMode) {
@@ -891,9 +1126,9 @@ export default function MindMapView({
                   top: by,
                   background: 'var(--surface)',
                   color: 'var(--text)',
-                  border: '1px solid var(--border)',
+                  border: bShape === 'decision' ? `1.5px dashed ${color.accent}` : '1px solid var(--border)',
                   borderLeft: `4px solid ${color.accent}`,
-                  borderRadius: 12,
+                  borderRadius: bShape === 'process' ? 3 : bShape === 'store' ? '14px 14px 4px 4px' : 12,
                   maxWidth: isExpanded ? 275 : 230,
                   padding: isExpanded ? '13px 17px' : '11px 18px',
                   boxShadow: isHighlighted
@@ -901,9 +1136,27 @@ export default function MindMapView({
                     : '0 8px 22px var(--shadow)',
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: 15, lineHeight: 1.32 }}>
-                  {branch.label}
-                </div>
+                {editingNode?.id === branch.id ? (
+                  <input
+                    autoFocus
+                    value={editingNode.text}
+                    onChange={(e) => setEditingNode({ ...editingNode, text: e.target.value })}
+                    onBlur={saveInlineEdit}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') saveInlineEdit();
+                      if (e.key === 'Escape') setEditingNode(null);
+                    }}
+                    style={styles.inlineInput}
+                  />
+                ) : (
+                  <div style={{ fontWeight: 600, fontSize: 15, lineHeight: 1.32, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {bShape === 'process' && <Cog size={17} color={color.accent} style={{ flexShrink: 0 }} />}
+                    {bShape === 'decision' && <GitFork size={17} color={color.accent} style={{ flexShrink: 0 }} />}
+                    {bShape === 'store' && <Database size={17} color={color.accent} style={{ flexShrink: 0 }} />}
+                    <span>{branch.label}</span>
+                  </div>
+                )}
                 {isExpanded && branch.summary && (
                   <div
                     style={{
@@ -945,6 +1198,10 @@ export default function MindMapView({
                       data-node
                       className="ml-node"
                       onPointerDown={(e) => startNodeDrag(e, cp.id)}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setEditingNode({ id: cp.id, text: cp.label, isBranch: false, branchId: branch.id });
+                      }}
                       onClick={() => {
                         if (!nodeDragRef.current.moved) handleNodeInteraction(branch, cp, false);
                       }}
@@ -952,6 +1209,8 @@ export default function MindMapView({
                         ...styles.childNode,
                         left: cp.x,
                         top: cp.y,
+                        borderRadius: cp.shape === 'process' ? 3 : cp.shape === 'store' ? '12px 12px 4px 4px' : 8,
+                        borderStyle: cp.shape === 'decision' ? 'dashed' : 'solid',
                         borderColor: isMastered
                           ? '#52A87A'
                           : isReview
@@ -973,9 +1232,27 @@ export default function MindMapView({
                           flexShrink: 0,
                         }}
                       />
-                      <span style={{ filter: isBlurred ? 'blur(5px)' : 'none', transition: 'filter 0.2s ease' }}>
-                        {cp.label}
-                      </span>
+                      {cp.shape === 'process' && <Cog size={16} color={color.accent} style={{ flexShrink: 0 }} />}
+                      {cp.shape === 'decision' && <GitFork size={16} color={color.accent} style={{ flexShrink: 0 }} />}
+                      {cp.shape === 'store' && <Database size={16} color={color.accent} style={{ flexShrink: 0 }} />}
+                      {editingNode?.id === cp.id ? (
+                        <input
+                          autoFocus
+                          value={editingNode.text}
+                          onChange={(e) => setEditingNode({ ...editingNode, text: e.target.value })}
+                          onBlur={saveInlineEdit}
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === 'Enter') saveInlineEdit();
+                            if (e.key === 'Escape') setEditingNode(null);
+                          }}
+                          style={styles.inlineInput}
+                        />
+                      ) : (
+                        <span style={{ filter: isBlurred ? 'blur(5px)' : 'none', transition: 'filter 0.2s ease' }}>
+                          {cp.label}
+                        </span>
+                      )}
                     </div>
 
                     {/* Level 3: Callout explanation card right on the canvas */}
@@ -1044,6 +1321,60 @@ export default function MindMapView({
           </div>
           <div style={{ fontSize: 14, fontWeight: 600, margin: '4px 0 8px' }}>
             {selectedNode.node.label}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+            {[
+              { id: 'card', label: 'Concept', Icon: Square },
+              { id: 'process', label: 'Process', Icon: Cog },
+              { id: 'decision', label: 'Decision', Icon: GitFork },
+              { id: 'store', label: 'Store', Icon: Database },
+            ].map(({ id, label, Icon }) => {
+              const active = (selectedNode.node.shape || 'card') === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setNodeShape(selectedNode.node.id, selectedNode.isBranch, id)}
+                  style={{
+                    ...styles.shapeChip,
+                    borderColor: active ? 'var(--accent)' : 'var(--border)',
+                    color: active ? 'var(--text)' : 'var(--text-soft)',
+                    background: active ? 'var(--surface-2)' : 'transparent',
+                  }}
+                >
+                  <Icon size={15} />
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 6, marginBottom: 8 }}>
+            <button
+              onClick={() => addNodeInline(selectedNode.branch.id, 'New sub-idea')}
+              style={styles.actionBtn}
+              title="Shortcut: Tab"
+            >
+              <Plus size={14} /> <span>Add child</span>
+            </button>
+            <button
+              onClick={() =>
+                setEditingNode({
+                  id: selectedNode.node.id,
+                  text: selectedNode.node.label,
+                  isBranch: selectedNode.isBranch,
+                  branchId: selectedNode.branch.id,
+                })
+              }
+              style={styles.actionBtn}
+            >
+              <Pencil size={13} /> <span>Rename</span>
+            </button>
+            <button
+              onClick={() => deleteNodeById(selectedNode.node.id, selectedNode.isBranch)}
+              style={{ ...styles.actionBtn, padding: '6px 10px', color: '#E06C52', borderColor: 'rgba(224, 108, 82, 0.35)' }}
+              title="Delete (Shortcut: Delete)"
+            >
+              <Trash2 size={14} />
+            </button>
           </div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             <button
@@ -1247,10 +1578,38 @@ export default function MindMapView({
         </div>
 
         <form onSubmit={handleAsk} className="ml-input-box" style={styles.askBar}>
+          <div style={styles.modeToggle}>
+            <button
+              type="button"
+              onClick={() => setBarMode('ask')}
+              style={{
+                ...styles.modeBtn,
+                background: barMode === 'ask' ? 'var(--surface-2)' : 'transparent',
+                color: barMode === 'ask' ? 'var(--text)' : 'var(--muted)',
+              }}
+            >
+              Ask
+            </button>
+            <button
+              type="button"
+              onClick={() => setBarMode('edit')}
+              style={{
+                ...styles.modeBtn,
+                background: barMode === 'edit' ? 'var(--surface-2)' : 'transparent',
+                color: barMode === 'edit' ? 'var(--text)' : 'var(--muted)',
+              }}
+            >
+              Edit Map
+            </button>
+          </div>
           <input
             value={askInput}
             onChange={(e) => setAskInput(e.target.value)}
-            placeholder="Query this lattice or propose new nodes..."
+            placeholder={
+              barMode === 'edit'
+                ? 'e.g. "Add a branch about security" or "Remove X"...'
+                : 'Query this map or propose new nodes...'
+            }
             style={styles.askInput}
           />
           <button type="submit" disabled={askLoading || !askInput.trim()} style={styles.askBtn}>
@@ -1361,18 +1720,33 @@ const styles = {
     cursor: 'pointer',
     boxShadow: '0 4px 12px var(--shadow)',
   },
+  actionBtn: {
+    background: 'var(--surface-2)',
+    border: '1px solid var(--border-strong)',
+    color: 'var(--text)',
+    borderRadius: 7,
+    padding: '7px 10px',
+    fontSize: 12,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    cursor: 'pointer',
+  },
   masteryBtn: {
     flex: 1,
     background: 'var(--surface-2)',
     border: '1px solid',
     borderRadius: 7,
-    padding: '6px 8px',
-    fontSize: 11.5,
+    padding: '7px 8px',
+    fontSize: 12,
     fontWeight: 500,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 5,
     cursor: 'pointer',
   },
   connectBtn: {
@@ -1509,12 +1883,12 @@ const styles = {
     top: 72,
     right: 16,
     zIndex: 25,
-    width: 'min(260px, 85vw)',
+    width: 'min(290px, 85vw)',
     background: 'var(--surface-glass)',
     backdropFilter: 'blur(10px)',
     border: '1px solid var(--border)',
     borderRadius: 14,
-    padding: 12,
+    padding: 13,
     boxShadow: '0 14px 34px var(--shadow)',
   },
   inspectorMobile: {
@@ -1622,6 +1996,44 @@ const styles = {
     justifyContent: 'center',
     cursor: 'pointer',
   },
+  inlineInput: {
+    width: '100%',
+    background: 'var(--bg)',
+    border: '1px solid var(--border-strong)',
+    borderRadius: 5,
+    padding: '3px 6px',
+    color: 'var(--text)',
+    fontSize: 13.5,
+    outline: 'none',
+  },
+  shapeChip: {
+    border: '1px solid',
+    borderRadius: 7,
+    padding: '6px 8px',
+    fontSize: 12,
+    fontWeight: 500,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    cursor: 'pointer',
+  },
+  modeToggle: {
+    display: 'flex',
+    background: 'var(--bg)',
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    padding: 2,
+    flexShrink: 0,
+  },
+  modeBtn: {
+    border: 'none',
+    borderRadius: 4,
+    padding: '4px 8px',
+    fontSize: 11.5,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
   askBar: {
     display: 'flex',
     alignItems: 'center',
@@ -1629,7 +2041,7 @@ const styles = {
     background: 'var(--surface)',
     border: '1px solid var(--border-strong)',
     borderRadius: 8,
-    padding: '5px 5px 5px 14px',
+    padding: '5px 5px 5px 8px',
     boxShadow: '0 4px 16px var(--shadow)',
   },
   askInput: {
