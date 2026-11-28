@@ -305,7 +305,7 @@ export async function loadDocumentsFromDB(fallbackDocs = []) {
 
 export async function saveDocumentToDB(doc) {
   const normalized = normalizeDocument(doc);
-  if (!normalized) return;
+  if (!normalized) return { ok: false, error: 'Invalid document' };
   try {
     const db = await openDatabase();
     await new Promise((resolve, reject) => {
@@ -315,8 +315,9 @@ export async function saveDocumentToDB(doc) {
       tx.onerror = () => reject(tx.error);
     });
     db.close();
-  } catch {
-    // ignore IDB error, fallback handled below
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || 'IndexedDB write failed' };
   }
 }
 
@@ -330,18 +331,27 @@ export async function deleteDocumentFromDB(id) {
       tx.onerror = () => reject(tx.error);
     });
     db.close();
-  } catch {
-    // ignore
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || 'IndexedDB delete failed' };
   }
 }
 
 export async function saveAllDocumentsToDB(docs) {
   const normalized = docs.map(normalizeDocument).filter(Boolean);
+  let localSaved = false;
+  let idbSaved = false;
+  const errors = [];
+
   try {
-    localStorage.setItem(LEGACY_MAPS_KEY, JSON.stringify(normalized));
-  } catch {
-    // ignore quota errors for large diagrams in localStorage
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(LEGACY_MAPS_KEY, JSON.stringify(normalized));
+      localSaved = true;
+    }
+  } catch (err) {
+    errors.push(err?.message || 'localStorage write failed');
   }
+
   try {
     const db = await openDatabase();
     await new Promise((resolve, reject) => {
@@ -355,9 +365,17 @@ export async function saveAllDocumentsToDB(docs) {
       tx.onerror = () => reject(tx.error);
     });
     db.close();
-  } catch {
-    // ignore
+    idbSaved = true;
+  } catch (err) {
+    errors.push(err?.message || 'IndexedDB write failed');
   }
+
+  return {
+    ok: idbSaved || localSaved,
+    idbSaved,
+    localSaved,
+    error: idbSaved || localSaved ? null : errors.join('; ') || 'No persistent storage available',
+  };
 }
 
 export function getRecentTemplateIds() {

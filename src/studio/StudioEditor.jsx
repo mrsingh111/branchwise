@@ -68,6 +68,7 @@ import {
   exportDiagramPDF,
   downloadTextFile,
 } from './exportEngine';
+import { sanitizeExternalUrl, validateAndNormalizeDiagramJson } from './importValidation';
 import BranchHistoryDrawer from './BranchHistoryDrawer';
 import {
   createBranchSnapshot,
@@ -804,32 +805,7 @@ export default function StudioEditor({
         commitGraph(cn, ce);
         zoomToBounds(cn);
       } else if (ext === 'json') {
-        const parsed = JSON.parse(text);
-        const rawNodes = Array.isArray(parsed?.nodes)
-          ? parsed.nodes
-          : Array.isArray(parsed?.branches?.[0]?.nodes)
-          ? parsed.branches[0].nodes
-          : null;
-        const rawEdges = Array.isArray(parsed?.edges)
-          ? parsed.edges
-          : Array.isArray(parsed?.branches?.[0]?.edges)
-          ? parsed.branches[0].edges
-          : [];
-        if (!rawNodes) {
-          throw new Error('JSON file must contain a "nodes" array or a Branchwise "branches" array.');
-        }
-        const safeNodes = rawNodes.map((n, idx) => ({
-          ...n,
-          id: String(n?.id || makeId(`imp_${idx}`)),
-          label: String(n?.label ?? 'Node'),
-          shape: String(n?.shape || 'rect'),
-          x: Number.isFinite(Number(n?.x)) ? Number(n.x) : 100 + (idx % 6) * 190,
-          y: Number.isFinite(Number(n?.y)) ? Number(n.y) : 100 + Math.floor(idx / 6) * 110,
-          w: Math.max(40, Number(n?.w) || 160),
-          h: Math.max(30, Number(n?.h) || 64),
-        }));
-        const nodeIds = new Set(safeNodes.map((n) => n.id));
-        const safeEdges = rawEdges.filter((ed) => ed && nodeIds.has(String(ed.source)) && nodeIds.has(String(ed.target)));
+        const { nodes: safeNodes, edges: safeEdges } = validateAndNormalizeDiagramJson(text);
         commitGraph(safeNodes, safeEdges);
         zoomToBounds(safeNodes);
       } else {
@@ -890,7 +866,15 @@ export default function StudioEditor({
               {doc.title}
             </button>
           )}
-          <span style={styles.savePill}>{saveStatus === 'saving' ? 'Saving...' : 'Saved'}</span>
+          <span
+            style={{
+              ...styles.savePill,
+              color: saveStatus === 'error' ? '#E06C75' : '#52A87A',
+              background: saveStatus === 'error' ? 'rgba(224,108,117,0.14)' : 'rgba(82,168,122,0.12)',
+            }}
+          >
+            {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'error' ? 'Save failed' : 'Saved'}
+          </span>
         </div>
 
         <div style={styles.topGroup}>
@@ -1442,8 +1426,7 @@ export default function StudioEditor({
                   )}
 
                   {(() => {
-                    const rawLink = String(node.metadata?.link || '').trim();
-                    const safeLink = /^(https?:\/\/|mailto:)/i.test(rawLink) ? rawLink : '';
+                    const safeLink = sanitizeExternalUrl(node.metadata?.link);
                     return safeLink ? (
                       <a
                         href={safeLink}

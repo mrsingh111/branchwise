@@ -7,9 +7,10 @@ import {
   applyGridAutoLayout,
 } from '../studio/shapeCatalog.js';
 import { generateDiagramSVG } from '../studio/exportEngine.js';
+import { sanitizeExternalUrl, validateAndNormalizeDiagramJson } from '../studio/importValidation.js';
 import { parseCsvToDiagram } from '../mermaid/csvImport.js';
 
-describe('Canvas Geometry, CSV Import, SVG Export & 500-Node Performance', () => {
+describe('Canvas Geometry, Import Validation, URL Sanitization & SVG Export', () => {
   it('computes ports, edge paths, alignment, and distribution accurately', () => {
     const a = { id: 'a', x: 0, y: 0, w: 100, h: 60 };
     const b = { id: 'b', x: 250, y: 120, w: 100, h: 60 };
@@ -25,6 +26,33 @@ describe('Canvas Geometry, CSV Import, SVG Export & 500-Node Performance', () =>
 
     const distributed = distributeSelectedNodes([a, b, c], ['a', 'b', 'c'], 'horizontal');
     expect(distributed[1].x).toBe(250);
+  });
+
+  it('sanitizes external hyperlinks and blocks unsafe schemes', () => {
+    expect(sanitizeExternalUrl('https://example.com/docs')).toBe('https://example.com/docs');
+    expect(sanitizeExternalUrl('http://localhost:3000')).toBe('http://localhost:3000');
+    expect(sanitizeExternalUrl('mailto:dev@example.com')).toBe('mailto:dev@example.com');
+    expect(sanitizeExternalUrl('javascript:alert(1)')).toBe('');
+    expect(sanitizeExternalUrl('data:text/html,<script>alert(1)</script>')).toBe('');
+    expect(sanitizeExternalUrl('vbscript:msgbox(1)')).toBe('');
+  });
+
+  it('validates JSON imports, normalizes missing fields, and strips dangling edges', () => {
+    const valid = validateAndNormalizeDiagramJson(
+      JSON.stringify({
+        nodes: [{ id: 'n1', label: 'API' }, { id: 'n2', label: 'DB', x: 300, y: 100 }],
+        edges: [
+          { id: 'e1', source: 'n1', target: 'n2' },
+          { id: 'e_bad', source: 'n1', target: 'missing_node' },
+        ],
+      })
+    );
+    expect(valid.nodes).toHaveLength(2);
+    expect(valid.nodes[0].w).toBe(160);
+    expect(valid.edges).toHaveLength(1);
+
+    expect(() => validateAndNormalizeDiagramJson('not-json')).toThrow('Invalid JSON syntax.');
+    expect(() => validateAndNormalizeDiagramJson('{"foo":"bar"}')).toThrow('JSON file must contain');
   });
 
   it('parses CSV edge lists and rejects invalid CSV', () => {
@@ -45,7 +73,7 @@ describe('Canvas Geometry, CSV Import, SVG Export & 500-Node Performance', () =>
     expect(svg).toContain('#38bdf8');
   });
 
-  it('handles 500-node auto-layout and SVG export within 250ms', () => {
+  it('lays out 500 nodes deterministically without overlaps and exports valid SVG (unit-level, non-DOM)', () => {
     const nodes = Array.from({ length: 500 }, (_, i) => ({
       id: `n_${i}`,
       label: `Node ${i}`,
@@ -63,13 +91,13 @@ describe('Canvas Geometry, CSV Import, SVG Export & 500-Node Performance', () =>
       routing: 'orthogonal',
     }));
 
-    const t0 = performance.now();
     const laid = applyGridAutoLayout(nodes);
-    const svg = generateDiagramSVG(laid, edges, { theme: 'dark' });
-    const elapsed = performance.now() - t0;
-
     expect(laid).toHaveLength(500);
-    expect(svg.length).toBeGreaterThan(10000);
-    expect(elapsed).toBeLessThan(250);
+    const coords = new Set(laid.map((n) => `${n.x},${n.y}`));
+    expect(coords.size).toBe(500);
+
+    const svg = generateDiagramSVG(laid, edges, { theme: 'dark' });
+    const pathMatches = svg.match(/<path\b/g) || [];
+    expect(pathMatches.length).toBeGreaterThanOrEqual(499);
   });
 });

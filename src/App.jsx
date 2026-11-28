@@ -64,7 +64,9 @@ export default function App() {
   useEffect(() => {
     setSaveStatus('saving');
     const timer = setTimeout(() => {
-      saveAllDocumentsToDB(maps).then(() => setSaveStatus('saved'));
+      saveAllDocumentsToDB(maps).then((res) => {
+        setSaveStatus(res?.ok ? 'saved' : 'error');
+      });
     }, 180);
     return () => clearTimeout(timer);
   }, [maps]);
