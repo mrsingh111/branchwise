@@ -31,6 +31,18 @@ Made freely for everyone by **[Sewak Singh](https://github.com/mrsingh111)** · 
 | :---: | :---: |
 | ![Home Workspace](docs/screenshots/home-workspace.png) | ![Mind Map](docs/screenshots/mindmap-dark.png) |
 
+| Pro Diagram Studio | Split-Screen Mermaid Editor |
+| :---: | :---: |
+| ![Pro Diagram Studio](docs/screenshots/studio-canvas.png) | ![Mermaid Split-Screen](docs/screenshots/mermaid-split-screen.png) |
+
+| 12-Category Template Gallery | Export Modal & Branding Preview |
+| :---: | :---: |
+| ![Template Gallery](docs/screenshots/template-gallery.png) | ![Export Modal](docs/screenshots/export-modal.png) |
+
+| Exported Diagram Sample (PNG/SVG) | Home Workspace |
+| :---: | :---: |
+| ![Exported Diagram Sample](docs/screenshots/exported-diagram-sample.png) | ![Home Workspace](docs/screenshots/home-workspace.png) |
+
 | Mobile View (`390×844`) | AI API Configuration |
 | :---: | :---: |
 | ![Mobile Canvas](docs/screenshots/mobile-canvas.png) | ![AI API Configuration](docs/screenshots/api-config.png) |
